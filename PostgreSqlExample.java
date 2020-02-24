@@ -16,45 +16,20 @@ import java.util.Set;
 public class PostgreSqlExample {
 	
 	
-	
-	
-	
-	
-	
-	
-	
 	public static void main(String[] args) {
+		// movielens is an example
 		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/movielens", "postgres", "postgres")) {
-
 
 			System.out.println("Connected to PostgreSQL database!");
 			
-			// get tables 
+			// initialize k
 			int k = 10;
+			
+			// start calculation
 			CalculatingTuples test = new CalculatingTuples(connection, k);
+				
 			
-			// only one table
-
-			
-			// there is a relation which is a subset of all tables
-			
-			
-			
-			
-			
-			
-			Statement statement = connection.createStatement();
-			//System.out.println("Reading car records...");
-			//System.out.printf("%-30.30s  %-30.30s%n", "Model", "Price");
-			//ResultSet resultSet = statement.executeQuery("SELECT * FROM movies");
-			//while (resultSet.next()) {
-				//System.out.println(resultSet.getString("movie_title"));
-			//}
-
-		} /*catch (ClassNotFoundException e) {
-			System.out.println("PostgreSQL JDBC driver not found.");
-			e.printStackTrace();
-		}*/ catch (SQLException e) {
+		} catch (SQLException e) {
 			System.out.println("Connection failure.");
 			e.printStackTrace();
 		}
