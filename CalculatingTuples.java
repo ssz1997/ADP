@@ -19,12 +19,12 @@ public class CalculatingTuples {
 	protected HashMap<String, ArrayList<String>> tables_attrs = new HashMap<>();     // the attributes in each table
 	private Connection connection;
 	private StringBuilder str = new StringBuilder();
-    private int k;
+	private int k;
 	
 	CalculatingTuples(Connection connection, int k) throws SQLException{
 		this.connection = connection;
-		setUp();
 		this.k = k;
+		setUp();
 	}
 	
 	private void setUp() throws SQLException {
