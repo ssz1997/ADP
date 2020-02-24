@@ -20,6 +20,8 @@ public class CalculatingTuples {
 	private Connection connection;
 	private StringBuilder str = new StringBuilder();
 	private int k;
+	private HashMap<String, Integer> attr_id = new HashMap<>();
+	private HashMap<Integer, String> id_attr = new HashMap<>();
 	
 	CalculatingTuples(Connection connection, int k) throws SQLException{
 		this.connection = connection;
@@ -76,7 +78,7 @@ public class CalculatingTuples {
 	}
 	
 	/*
-	 * The attributes in each table are put into a set. Find the intersection of all these sets.
+	 * The attributes in each table are put into sets. Find the intersection of all these sets.
 	 * If the # of attributes in the table with fewest attributes is the same as the size of the intersection, 
 	 * then all attributes in this table appear in every other tables.
 	 */
@@ -105,7 +107,12 @@ public class CalculatingTuples {
 				intersection.add(rsmd.getColumnName(i));
 			}
 		}
-		
+		int i = 0;
+		for (String attr: intersection) {
+			attr_id.put(attr, Integer.valueOf(i) );
+			id_attr.put(Integer.valueOf(i), attr);
+			i += 1;
+		}
 		//System.out.println(intersection);
 		//System.out.println(tables_attrs);
 		
@@ -167,11 +174,56 @@ public class CalculatingTuples {
 	/*
 	 * Construct adjacency matrix for the attributes, then do BFS on one attribute. If there exists attributes not reachable,
 	 * then the table containing that attribute can be considered separately. 
-	 * Need to change code where union is calculated.
 	 */
 	public void dividable() {
+		HashSet<String> group1 = new HashSet<String>();
+		HashSet<String> group2 = new HashSet<String>();
 		
-
+		int [][] adjacency = new int[attr_id.size()][attr_id.size()];
+		for (int i = 0; i < adjacency.length; i++) {
+			for (int j = 0; j < adjacency.length; j++) {
+				adjacency[i][j] = 0;
+			}
+		}
+		
+		for (ArrayList<String> attrs : tables_attrs.values()) {
+			for (int i = 1; i < attrs.size(); i++) {
+				int base = attr_id.get(attrs.get(0));
+				adjacency[base][attr_id.get(attrs.get(i))] = 1;
+			}
+		}
+		// perform BFS
+		HashSet<Integer> visited = new HashSet<Integer>();
+		ArrayList<Integer> current = new ArrayList<Integer>();
+		ArrayList<Integer> next = new ArrayList<Integer>();
+		current.add(0);
+		visited.add(0);
+		while (current.size() != 0) {
+			for (int c: current) {
+				for (int i = 0; i < adjacency.length; i ++) {
+					if (adjacency[c][i] == 1 && !visited.contains(i)) {
+						next.add(i);
+						visited.add(i);
+					}
+				}
+			}
+			current = next;
+			next.clear();
+		}
+		
+		for (String table: tables_attrs.keySet()) {
+			boolean inGroup2 = true;
+			for (String attr: tables_attrs.get(table)) {
+				if (visited.contains(attr_id.get(attr))) {
+					group1.add(table);					
+					inGroup2 = false;
+					break;
+				}
+			}
+			if (inGroup2) {
+				group2.add(table);
+			}
+		}
 	}
 	
 	
