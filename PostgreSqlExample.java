@@ -27,6 +27,25 @@ public class PostgreSqlExample {
 	}
 	
 	private int setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) {
+		// find intersection of attributes in each table
+		Integer sizeOfSmallestTable = Integer.MAX_VALUE;
+		String smallestTable = "";
+		HashSet<String> intersection = new HashSet<String>();
+		for (String attr: attrs) {
+			intersection.add(attr);
+		}
+		
+		for (String tableName: tables_attrs.keySet()) {
+			// find the intersection of the attributes of all tables
+			intersection.retainAll(tables_attrs.get(tableName));
+			// find the table with fewest attributes
+			if (tables_attrs.get(tableName).size() < sizeOfSmallestTable) {
+				sizeOfSmallestTable = tables_attrs.get(tableName).size();
+				smallestTable = tableName;
+			}
+		}
+		
+		
 		try {
 			    // base case 1
 				int base_case_1 = this.onlyOneTable(k, statement, tables_attrs, attrs);
@@ -34,7 +53,8 @@ public class PostgreSqlExample {
 				int base_case_2 = Integer.MIN_VALUE;
 				// general case 1
 				int general_case_1 = Integer.MIN_VALUE;
-				
+				// general case 2
+				int general_case_2 = Integer.MIN_VALUE;
 				
 				switch (base_case_1) {
 				    case -1:
@@ -42,7 +62,7 @@ public class PostgreSqlExample {
 				        break;
 				    case 0:
 				    	// base case 2
-				    	base_case_2 = this.existsSubset(k, statement, tables_attrs, attrs);
+				    	base_case_2 = this.existsSubset(k, statement, tables_attrs, attrs, intersection, smallestTable);
 				        break;
 				    default:
 				    	return base_case_1;
@@ -57,48 +77,19 @@ public class PostgreSqlExample {
 				    	break;
 				    case 0:
 				    	// general case 1
-				    	ArrayList<HashSet<String>> groups = this.dividable(k, statement, tables_attrs, attrs);
+				    	ArrayList<HashSet<String>> groups = dividable(k, statement, tables_attrs, attrs);
 				    	if (groups.get(1).size() == 0) { // not dividable
 				    		// general case 2
+				    		if (intersection.size() != 0) {
+				    			general_case_2 = generalDP(k, statement, tables_attrs, attrs, intersection); 
+				    		}
+				    		else {
+				    			// NP-hard
+				    		}
 				    	}
 				    	else {
-				    		HashSet<String> group1 = groups.get(0);
-				    		HashSet<String> group2 = groups.get(1);
-				    		ArrayList<Integer> minK = new ArrayList<Integer>();
-				    		
-				    		for (int k1 = 0; k1 <= k; k1 ++) {
-				    			for (int k2 = 0; k2 <= k; k2 ++) {
-				    				if (k1*group2.size() + k2*group1.size() - k1*k2 < k) {
-				    					continue;
-				    				}
-				    				else {
-				                        
-				    					HashMap<String, ArrayList<String>> tables_attrs_1 = new HashMap<>();
-						    			HashMap<String, ArrayList<String>> tables_attrs_2 = new HashMap<>();
-						    			HashSet<String> attrs_1 = new HashSet<String>();
-						    			HashSet<String> attrs_2 = new HashSet<String>();						    			
-						    			
-						    			for (String tableName: group1) {
-						    				tables_attrs_1.put(tableName, tables_attrs.get(tableName));
-						    				attrs_1.addAll(tables_attrs.get(tableName));
-						    			}
-						    			for (String tableName: group2) {
-						    				tables_attrs_2.put(tableName, tables_attrs.get(tableName));
-						    				attrs_2.addAll(tables_attrs.get(tableName));
-						    			}
-						    			
-						    			int group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1);
-						    			int group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2);
-						    			
-						    			minK.add(group1Removed + group2Removed);
-						    			
-						    			break;						    			
-				    				}
-				    			}			    			
-				    		}
-				    	    Collections.sort(minK);
-				    	    general_case_1 = minK.get(0);
-				    	    return general_case_1;
+				    		general_case_1 = decompose(k, statement, tables_attrs, attrs, groups);
+				    		return general_case_1;
 				    	}
 				    	break;
 				    default:
@@ -115,7 +106,7 @@ public class PostgreSqlExample {
 		
 	
 
-	public int onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) throws SQLException {
+	private int onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) throws SQLException {
 		// only 1 table
 		if (tables_attrs.size() == 1) {
 			
@@ -126,7 +117,7 @@ public class PostgreSqlExample {
 			
 			// not enough data
 			if (numOfRows < k) {
-				return -1;			
+				return Integer.MAX_VALUE/2;			
 			}
 			// print out the first k data
 			/*
@@ -156,26 +147,11 @@ public class PostgreSqlExample {
 	 * If the # of attributes in the table with fewest attributes is the same as the size of the intersection, 
 	 * then all attributes in this table appear in every other tables.
 	 */
-	public int existsSubset(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) throws SQLException {
+	private int existsSubset(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, String smallestTable) throws SQLException {
 		
 		// keep track of the table with fewest attributes
-		Integer sizeOfSmallestTable = Integer.MAX_VALUE;
-		String smallestTable = "";
-		HashSet<String> intersection = new HashSet<String>();
-		for (String attr: attrs) {
-			intersection.add(attr);
-		}
 		
-		for (String tableName: tables_attrs.keySet()) {
-			// find the intersection of the attributes of all tables
-			intersection.retainAll(tables_attrs.get(tableName));
-			// find the table with fewest attributes
-			if (tables_attrs.get(tableName).size() < sizeOfSmallestTable) {
-				sizeOfSmallestTable = tables_attrs.get(tableName).size();
-				smallestTable = tableName;
-
-			}
-		}
+		
 		
 		
 		//System.out.println(intersection);
@@ -185,7 +161,7 @@ public class PostgreSqlExample {
 		String subsetTableName = null;
 		
 		// determine if there exists such table
-		if (sizeOfSmallestTable == intersection.size()) {
+		if (tables_attrs.get(smallestTable).size() == intersection.size()) {
 			existsSubset = true;
 			subsetTableName = smallestTable;
 		}
@@ -219,7 +195,7 @@ public class PostgreSqlExample {
 				return tupleRemoved;
 			}
 			else {
-				return -1;
+				return Integer.MAX_VALUE/2;
 			}
 		}
 		else {
@@ -231,7 +207,7 @@ public class PostgreSqlExample {
 	 * Construct adjacency matrix for the attributes, then do BFS on one attribute. If there exists attributes not reachable,
 	 * then the table containing that attribute can be considered separately. 
 	 */
-	public ArrayList<HashSet<String>> dividable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) {
+	private ArrayList<HashSet<String>> dividable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) {
 		
 		ArrayList<HashSet<String>> groups = new ArrayList<HashSet<String>>();
 		groups.add(new HashSet<String>());
@@ -286,6 +262,62 @@ public class PostgreSqlExample {
 		return groups;
 	}
 	
+	private int decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<HashSet<String>> groups) {
+		HashSet<String> group1 = groups.get(0);
+		HashSet<String> group2 = groups.get(1);
+		ArrayList<Integer> minK = new ArrayList<Integer>();
+		
+		for (int k1 = 0; k1 <= k; k1 ++) {
+			for (int k2 = 0; k2 <= k; k2 ++) {
+				if (k1*group2.size() + k2*group1.size() - k1*k2 < k) {
+					continue;
+				}
+				else {
+                    
+					HashMap<String, ArrayList<String>> tables_attrs_1 = new HashMap<>();
+	    			HashMap<String, ArrayList<String>> tables_attrs_2 = new HashMap<>();
+	    			HashSet<String> attrs_1 = new HashSet<String>();
+	    			HashSet<String> attrs_2 = new HashSet<String>();						    			
+	    			
+	    			for (String tableName: group1) {
+	    				tables_attrs_1.put(tableName, tables_attrs.get(tableName));
+	    				attrs_1.addAll(tables_attrs.get(tableName));
+	    			}
+	    			for (String tableName: group2) {
+	    				tables_attrs_2.put(tableName, tables_attrs.get(tableName));
+	    				attrs_2.addAll(tables_attrs.get(tableName));
+	    			}
+	    			
+	    			int group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1);
+	    			int group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2);
+	    			
+	    			minK.add(group1Removed + group2Removed);
+	    			
+	    			break;						    			
+				}
+			}			    			
+		}
+	    Collections.sort(minK);
+	    return minK.get(0);
+	}
+	
+	private int generalDP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection) throws SQLException {
+		
+		
+		int [][] dp = new int[tables_attrs.size()][k];
+		for (int i = 0; i < dp.length; i++) {
+			for (int j = 0; j < dp[0].length; j++) {
+				int[] ij = new int[k+1];
+				for (int kk = 0; kk <= k; kk++) {
+				}
+			}
+		}
+		
+		
+		
+		
+		return 0;
+	}
 	
 	
 	
@@ -319,6 +351,8 @@ public class PostgreSqlExample {
 					attrs.add(rsmd.getColumnName(i));
 				}
 			}
+			
+			
 
 			// start calculation
 			PostgreSqlExample test = new PostgreSqlExample(k, statement, tables_attrs, attrs);
