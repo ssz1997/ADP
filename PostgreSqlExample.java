@@ -362,22 +362,61 @@ public class PostgreSqlExample {
 	}
 	
 	private int generalDP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection) throws SQLException {
+		String[] tables = (String[]) tables_attrs.keySet().toArray();
+		int [][] dp = new int[tables_attrs.size()][k+1];
+		HashMap<String, ArrayList<Integer>> tables_removable = new HashMap<String, ArrayList<Integer>>();
 		
+		String queryFrom = "";
+		for (String tableName: tables) {
+			queryFrom += tableName + " NATURAL JOIN ";
+		}
+		queryFrom = queryFrom.substring(0, queryFrom.length()-14);
 		
-		int [][] dp = new int[tables_attrs.size()][k];
+		for (String tableName: tables) {
+			ArrayList<Integer> row_removable = new ArrayList<Integer>();
+			String queryGroupby = tables_attrs.get(tableName).toString();
+			queryGroupby = queryGroupby.substring(1, queryGroupby.length()-1);
+			ResultSet tableData = statement.executeQuery("select count(*), " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby + " order by count(*) desc");
+			while (tableData.next() && row_removable.size() <= k) {
+				row_removable.add(tableData.getInt(1));
+			}
+			for (int i = 1; i < row_removable.size(); i ++) {
+				row_removable.set(i, row_removable.get(i-1) + row_removable.get(i));
+			}
+			tables_removable.put(tableName, row_removable);
+		}
+		
+		for (int i = 0; i <= k; i ++) {
+			dp[0][i] = tables_removable.get(tables[0]).get(i);
+		}
+		
 		for (int i = 0; i < dp.length; i++) {
-			for (int j = 0; j < dp[0].length; j++) {
+			for (int j = 0; j <= k; j++) {
 				int[] ij = new int[k+1];
 				for (int kk = 0; kk <= k; kk++) {
-					
+					ij[kk] = dp[i-1][kk];// + "number of rows deleted from delete k-kk rows in this table"
+					int numOfRowDeleted = 0;
+					while (kk + tables_removable.get(tables[i]).get(numOfRowDeleted)< k) {
+						numOfRowDeleted += 1;
+					}
+					ij[kk] += numOfRowDeleted;
 				}
+				Arrays.sort(ij);
+				dp[i][j] = ij[0];
 			}
 		}
 		
+		int minVal = Integer.MAX_VALUE;
+		for (int i = 0; i < dp[0].length; i ++) {
+			if (dp[i][k] < minVal) {
+				minVal = dp[i][k];
+			}
+		}
 		
+
+		return minVal;
+
 		
-		
-		return 100000 * k;
 	}
 	
 	
