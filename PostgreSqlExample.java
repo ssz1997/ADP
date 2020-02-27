@@ -9,6 +9,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +29,11 @@ public class PostgreSqlExample {
 	}
 	
 	private int setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) {
+		
+		if (k == 0) {
+			return 0;
+		}
+		
 		// find intersection of attributes in each table
 		Integer sizeOfSmallestTable = Integer.MAX_VALUE;
 		String smallestTable = "";
@@ -86,6 +92,7 @@ public class PostgreSqlExample {
 				    		}
 				    		else {
 				    			// NP-hard
+				    			return 100000 * k;
 				    		}
 				    	}
 				    	else {
@@ -109,6 +116,8 @@ public class PostgreSqlExample {
 
 	private int onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) throws SQLException {
 		// only 1 table
+		System.out.print("if: ");
+		System.out.println(tables_attrs.size());
 		if (tables_attrs.size() == 1) {
 			
 			// get number of rows
@@ -116,10 +125,11 @@ public class PostgreSqlExample {
 			ResultSet resultset = statement.executeQuery("select count(*) from " + tableName);
 			resultset.next();
 			int numOfRows = resultset.getInt(1);
-			
+			System.out.print("Num of rows: ");
+			System.out.println(numOfRows);
 			// not enough data
 			if (numOfRows < k) {
-				return Integer.MAX_VALUE/2;			
+				return 100000 * k;			
 			}
 			// print out the first k data
 			/*
@@ -137,6 +147,7 @@ public class PostgreSqlExample {
 				}
 			}	
 			*/
+
 			return k;
 		}
 		else {
@@ -155,7 +166,7 @@ public class PostgreSqlExample {
 		
 		
 		
-		
+		System.out.print("Intersection: ");
 		System.out.println(intersection);
 		//System.out.println(tables_attrs);
 
@@ -185,21 +196,24 @@ public class PostgreSqlExample {
 			// sort in descending order
 			ResultSet subsetData = statement.executeQuery("select count(*), " + query_groupby + " from " + query_from + " group by " + query_groupby + " order by count(*) desc");
 			
-			// move cursor to last
+			
 			int finalTupleRemoved = 0;
 			int tupleRemoved = 0;
+			System.out.println("k = " + String.valueOf(k));
 			while (subsetData.next() && finalTupleRemoved < k) {
+				System.out.println(subsetData.getInt(1));
 				finalTupleRemoved += subsetData.getInt(1);
 				tupleRemoved += 1;
 			}
 			
 			if (finalTupleRemoved >= k) {
 			    // it is possible to print out the set of tuples we are removing - not implemented yet
-				System.out.println(finalTupleRemoved);
+				System.out.println("Tuple removed: " + String.valueOf(tupleRemoved));
+				System.out.println("Final tuple removed: " + String.valueOf(finalTupleRemoved));
 				return tupleRemoved;
 			}
 			else {
-				return Integer.MAX_VALUE/2;
+				return 100000 * k;
 			}
 		}
 		else {
@@ -231,15 +245,17 @@ public class PostgreSqlExample {
 				adjacency[i][j] = 0;
 			}
 		}
-		System.out.println(attrs.size());
+		//System.out.println(attrs.size());
 		for (ArrayList<String> attr : tables_attrs.values()) {
-			for (int i = 1; i < attrs.size(); i++) {
-				int base = attr_id.get(attr.get(0));
-				System.out.println("Base:" + String.valueOf(base));
-				System.out.println(attr_id.get(attr.get(i)));
+			for (int i = 1; i < attr.size(); i++) {
+				int base = attr_id.get(attr.get(0));				
+				//System.out.println("Base:" + String.valueOf(base));
+				//System.out.println(attr_id.get(attr.get(i)));
 				adjacency[base][attr_id.get(attr.get(i))] = 1;
+				adjacency[attr_id.get(attr.get(i))][base] = 1;
 			}
 		}
+		//System.out.println(Arrays.deepToString(adjacency));
 		// perform BFS
 		HashSet<Integer> visited = new HashSet<Integer>();
 		ArrayList<Integer> current = new ArrayList<Integer>();
@@ -255,9 +271,14 @@ public class PostgreSqlExample {
 					}
 				}
 			}
-			current = next;
+			current.clear();
+			for (int id: next) {
+				current.add(id);
+			}
 			next.clear();
 		}
+		
+		//System.out.println(visited);
 		
 		for (String tableName: tables_attrs.keySet()) {
 			for (String attr: tables_attrs.get(tableName)) {
@@ -283,15 +304,15 @@ public class PostgreSqlExample {
 		for (String tableName: group1) {
 			queryGroup1 += tableName + " NATURAL JOIN ";
 		}
-		queryGroup1 = "select (*) from "+ queryGroup1.substring(0, queryGroup1.length()-14);
+		queryGroup1 = "select count (*) from "+ queryGroup1.substring(0, queryGroup1.length()-14);
 		
 		String queryGroup2 = "";
 		for (String tableName: group2) {
 			queryGroup2 += tableName + " NATURAL JOIN ";
 		}
-		queryGroup1 = "select (*) from "+ queryGroup2.substring(0, queryGroup2.length()-14);
-		
-		
+		queryGroup2 = "select count (*) from "+ queryGroup2.substring(0, queryGroup2.length()-14);
+		System.out.println(queryGroup1);
+		System.out.println(queryGroup2);
 		ResultSet rs = statement.executeQuery(queryGroup1);
 		rs.next();
 		int sizeOfGroup1InRelations = rs.getInt(1);
@@ -325,13 +346,17 @@ public class PostgreSqlExample {
 	    			
 	    			int group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1);
 	    			int group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2);
-	    			
+	    			System.out.println(k1);
+	    			System.out.println(group1Removed);
+	    			System.out.println(k2);
+	    			System.out.println(group2Removed);
 	    			minK.add(group1Removed + group2Removed);
 	    			
 	    			break;						    			
 				}
 			}			    			
 		}
+		System.out.println(minK);
 	    Collections.sort(minK);
 	    return minK.get(0);
 	}
@@ -352,7 +377,7 @@ public class PostgreSqlExample {
 		
 		
 		
-		return 0;
+		return 100000 * k;
 	}
 	
 	
@@ -366,15 +391,14 @@ public class PostgreSqlExample {
 			
 			/*
 			Statement statement = connection.createStatement();
-			statement.executeUpdate("delete from user_id");
-			for (int i = 1; i <= 943; i++) {
+			for (int i = 1; i <= 1000; i++) {
 				//String a = String.valueOf(r.nextInt((943 - 1) + 1) + 1);
-				statement.executeUpdate("insert into user_id (user_id) values (" + String.valueOf(i) + ")");
+				statement.executeUpdate("insert into decompose (decompose) values (" + String.valueOf(i) + ")");
 			}
 			*/
 	        
 			// initialize k
-			int k = 10;
+			int k = 1001;
 		    HashMap<String, ArrayList<String>> tables_attrs = new HashMap<>();     // the attributes in each table
 		    HashSet<String> attrs = new HashSet<String>();
 		
