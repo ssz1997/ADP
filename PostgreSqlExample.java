@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Random;
 
 
 
@@ -21,8 +22,8 @@ public class PostgreSqlExample {
 	
 	PostgreSqlExample(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs){
 		
-
-		setUp(k, statement, tables_attrs, attrs);	
+		int result = setUp(k, statement, tables_attrs, attrs);	
+		System.out.println(result);
 		
 	}
 	
@@ -113,6 +114,7 @@ public class PostgreSqlExample {
 			// get number of rows
 			String tableName = (String) tables_attrs.keySet().toArray()[0];
 			ResultSet resultset = statement.executeQuery("select count(*) from " + tableName);
+			resultset.next();
 			int numOfRows = resultset.getInt(1);
 			
 			// not enough data
@@ -124,14 +126,14 @@ public class PostgreSqlExample {
 			else {
 				resultset = statement.executeQuery("select * from movies FETCH first " + String.valueOf(k) + " rows only");
 				int numOfColumns = resultset.getMetaData().getColumnCount();
-				
+				StringBuilder str = new StringBuilder();
 				while (resultset.next()) {
 					for (int i = 1; i <= numOfColumns; i ++) {
 						str.append(resultset.getString(i));
 						str.append(" ");
 					}
 					System.out.println(str);
-					this.str = new StringBuilder();
+					str = new StringBuilder();
 				}
 			}	
 			*/
@@ -154,7 +156,7 @@ public class PostgreSqlExample {
 		
 		
 		
-		//System.out.println(intersection);
+		System.out.println(intersection);
 		//System.out.println(tables_attrs);
 
 		boolean existsSubset = false;
@@ -167,7 +169,7 @@ public class PostgreSqlExample {
 		}
 		
 		if (existsSubset) {
-			
+			System.out.println("exists subset");
 			// Construct query groupby: attr_1, attr_2, ..., attr_x
 			String query_groupby = tables_attrs.get(subsetTableName).toString();
 			query_groupby = query_groupby.substring(1, query_groupby.length()-1);
@@ -179,6 +181,7 @@ public class PostgreSqlExample {
 			}
 			query_from = query_from.substring(0, query_from.length()-14);
 			
+			System.out.println("select count(*), " + query_groupby + " from " + query_from + " group by " + query_groupby + " order by count(*) desc");
 			// sort in descending order
 			ResultSet subsetData = statement.executeQuery("select count(*), " + query_groupby + " from " + query_from + " group by " + query_groupby + " order by count(*) desc");
 			
@@ -192,6 +195,7 @@ public class PostgreSqlExample {
 			
 			if (finalTupleRemoved >= k) {
 			    // it is possible to print out the set of tuples we are removing - not implemented yet
+				System.out.println(finalTupleRemoved);
 				return tupleRemoved;
 			}
 			else {
@@ -213,7 +217,13 @@ public class PostgreSqlExample {
 		groups.add(new HashSet<String>());
 		groups.add(new HashSet<String>());
 		HashMap<String, Integer> attr_id = new HashMap<String, Integer>();
-			
+		
+		int index = 0;
+		for (String attr: attrs) {
+			attr_id.put(attr, index);
+			index += 1;
+		}
+		
 		
 		int [][] adjacency = new int[attr_id.size()][attr_id.size()];
 		for (int i = 0; i < adjacency.length; i++) {
@@ -221,10 +231,12 @@ public class PostgreSqlExample {
 				adjacency[i][j] = 0;
 			}
 		}
-		
+		System.out.println(attrs.size());
 		for (ArrayList<String> attr : tables_attrs.values()) {
 			for (int i = 1; i < attrs.size(); i++) {
 				int base = attr_id.get(attr.get(0));
+				System.out.println("Base:" + String.valueOf(base));
+				System.out.println(attr_id.get(attr.get(i)));
 				adjacency[base][attr_id.get(attr.get(i))] = 1;
 			}
 		}
@@ -262,14 +274,37 @@ public class PostgreSqlExample {
 		return groups;
 	}
 	
-	private int decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<HashSet<String>> groups) {
+	private int decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<HashSet<String>> groups) throws SQLException {
 		HashSet<String> group1 = groups.get(0);
 		HashSet<String> group2 = groups.get(1);
 		ArrayList<Integer> minK = new ArrayList<Integer>();
 		
+		String queryGroup1 = "";
+		for (String tableName: group1) {
+			queryGroup1 += tableName + " NATURAL JOIN ";
+		}
+		queryGroup1 = "select (*) from "+ queryGroup1.substring(0, queryGroup1.length()-14);
+		
+		String queryGroup2 = "";
+		for (String tableName: group2) {
+			queryGroup2 += tableName + " NATURAL JOIN ";
+		}
+		queryGroup1 = "select (*) from "+ queryGroup2.substring(0, queryGroup2.length()-14);
+		
+		
+		ResultSet rs = statement.executeQuery(queryGroup1);
+		rs.next();
+		int sizeOfGroup1InRelations = rs.getInt(1);
+		
+		rs = statement.executeQuery(queryGroup2);
+		rs.next();
+		int sizeOfGroup2InRelations = rs.getInt(1);
+		
+		
 		for (int k1 = 0; k1 <= k; k1 ++) {
 			for (int k2 = 0; k2 <= k; k2 ++) {
-				if (k1*group2.size() + k2*group1.size() - k1*k2 < k) {
+				// select count(*) from join gropu1/group2
+				if (k1*sizeOfGroup2InRelations + k2*sizeOfGroup1InRelations - k1*k2 < k) {
 					continue;
 				}
 				else {
@@ -309,6 +344,7 @@ public class PostgreSqlExample {
 			for (int j = 0; j < dp[0].length; j++) {
 				int[] ij = new int[k+1];
 				for (int kk = 0; kk <= k; kk++) {
+					
 				}
 			}
 		}
@@ -328,6 +364,15 @@ public class PostgreSqlExample {
 
 			System.out.println("Connected to PostgreSQL database!");
 			
+			/*
+			Statement statement = connection.createStatement();
+			statement.executeUpdate("delete from user_id");
+			for (int i = 1; i <= 943; i++) {
+				//String a = String.valueOf(r.nextInt((943 - 1) + 1) + 1);
+				statement.executeUpdate("insert into user_id (user_id) values (" + String.valueOf(i) + ")");
+			}
+			*/
+	        
 			// initialize k
 			int k = 10;
 		    HashMap<String, ArrayList<String>> tables_attrs = new HashMap<>();     // the attributes in each table
@@ -356,11 +401,13 @@ public class PostgreSqlExample {
 
 			// start calculation
 			PostgreSqlExample test = new PostgreSqlExample(k, statement, tables_attrs, attrs);
-			
-		}catch (SQLException e) {
+		
+		}
+		catch (SQLException e) {
 			System.out.println("Connection failure.");
 			e.printStackTrace();
 		}
-		
+	
     }
+    
 }
