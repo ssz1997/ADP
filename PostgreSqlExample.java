@@ -21,24 +21,23 @@ import java.util.Random;
 public class PostgreSqlExample {
 
 	
-	PostgreSqlExample(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs){
+	PostgreSqlExample(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types) throws SQLException{
 		
-		int result = setUp(k, statement, tables_attrs, attrs);	
+		int result = setUp(k, statement, tables_attrs, attrs_types);	
 		System.out.println(result);
-		
 	}
 	
-	private int setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) {
+	private int setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types) throws SQLException {
 		
 		if (k == 0) {
 			return 0;
 		}
-		
+
 		// find intersection of attributes in each table
 		Integer sizeOfSmallestTable = Integer.MAX_VALUE;
 		String smallestTable = "";
 		HashSet<String> intersection = new HashSet<String>();
-		for (String attr: attrs) {
+		for (String attr: attrs_types.keySet()) {
 			intersection.add(attr);
 		}
 		
@@ -55,7 +54,7 @@ public class PostgreSqlExample {
 		
 		try {
 			    // base case 1
-				int base_case_1 = this.onlyOneTable(k, statement, tables_attrs, attrs);
+				int base_case_1 = this.onlyOneTable(k, statement, tables_attrs, attrs_types);
 				// base case 2
 				int base_case_2 = Integer.MIN_VALUE;
 				// general case 1
@@ -69,7 +68,7 @@ public class PostgreSqlExample {
 				        break;
 				    case 0:
 				    	// base case 2
-				    	base_case_2 = this.existsSubset(k, statement, tables_attrs, attrs, intersection, smallestTable);
+				    	base_case_2 = this.existsSubset(k, statement, tables_attrs, attrs_types, intersection, smallestTable);
 				        break;
 				    default:
 				    	return base_case_1;
@@ -84,11 +83,11 @@ public class PostgreSqlExample {
 				    	break;
 				    case 0:
 				    	// general case 1
-				    	ArrayList<HashSet<String>> groups = dividable(k, statement, tables_attrs, attrs);
+				    	ArrayList<HashSet<String>> groups = dividable(k, statement, tables_attrs, attrs_types);
 				    	if (groups.get(1).size() == 0) { // not dividable
 				    		// general case 2
 				    		if (intersection.size() != 0) {
-				    			general_case_2 = generalDP(k, statement, tables_attrs, attrs, intersection); 
+				    			return generalDP(k, statement, tables_attrs, attrs_types, intersection); 
 				    		}
 				    		else {
 				    			// NP-hard
@@ -96,17 +95,16 @@ public class PostgreSqlExample {
 				    		}
 				    	}
 				    	else {
-				    		general_case_1 = decompose(k, statement, tables_attrs, attrs, groups);
+				    		general_case_1 = decompose(k, statement, tables_attrs, attrs_types, groups);
 				    		return general_case_1;
 				    	}
-				    	break;
-				    default:
+				default:
 				    	return base_case_2;
 				}
 				
 				
 			} catch (SQLException e) {
-				System.out.println("Connection failure.");
+				//System.out.println("Connection failure.");
 				e.printStackTrace();
 			}
 		return 0;
@@ -114,19 +112,16 @@ public class PostgreSqlExample {
 		
 	
 
-	private int onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) throws SQLException {
+	private int onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types) throws SQLException {
 		// only 1 table
-		System.out.print("if: ");
-		System.out.println(tables_attrs.size());
+		//System.out.println(tables_attrs.size());
 		if (tables_attrs.size() == 1) {
 			
 			// get number of rows
-			String tableName = (String) tables_attrs.keySet().toArray()[0];
+			String tableName = "\"" + (String) tables_attrs.keySet().toArray()[0] + "\"";
 			ResultSet resultset = statement.executeQuery("select count(*) from " + tableName);
 			resultset.next();
 			int numOfRows = resultset.getInt(1);
-			System.out.print("Num of rows: ");
-			System.out.println(numOfRows);
 			// not enough data
 			if (numOfRows < k) {
 				return 100000 * k;			
@@ -160,15 +155,11 @@ public class PostgreSqlExample {
 	 * If the # of attributes in the table with fewest attributes is the same as the size of the intersection, 
 	 * then all attributes in this table appear in every other tables.
 	 */
-	private int existsSubset(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, String smallestTable) throws SQLException {
+	private int existsSubset(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types, HashSet<String> intersection, String smallestTable) throws SQLException {
 		
 		// keep track of the table with fewest attributes
 		
 		
-		
-		System.out.print("Intersection: ");
-		System.out.println(intersection);
-		//System.out.println(tables_attrs);
 
 		boolean existsSubset = false;
 		String subsetTableName = null;
@@ -180,36 +171,30 @@ public class PostgreSqlExample {
 		}
 		
 		if (existsSubset) {
-			System.out.println("exists subset");
 			// Construct query groupby: attr_1, attr_2, ..., attr_x
 			String query_groupby = tables_attrs.get(subsetTableName).toString();
 			query_groupby = query_groupby.substring(1, query_groupby.length()-1);
 			
-			// Construct query from: Table1 NATURAL JOIN Table2 ... NATURAL JOIN Tabley
+			// Construct query from: Table1 NATURAL JOIN Table2 ... NATURAL JOIN TableX
 			String query_from = "";
 			for (String key: tables_attrs.keySet()) {
-				query_from += key + " NATURAL JOIN ";
+				query_from += "\"" + key + "\" NATURAL JOIN ";
 			}
 			query_from = query_from.substring(0, query_from.length()-14);
 			
-			System.out.println("select count(*), " + query_groupby + " from " + query_from + " group by " + query_groupby + " order by count(*) desc");
 			// sort in descending order
 			ResultSet subsetData = statement.executeQuery("select count(*), " + query_groupby + " from " + query_from + " group by " + query_groupby + " order by count(*) desc");
 			
 			
 			int finalTupleRemoved = 0;
 			int tupleRemoved = 0;
-			System.out.println("k = " + String.valueOf(k));
 			while (subsetData.next() && finalTupleRemoved < k) {
-				System.out.println(subsetData.getInt(1));
 				finalTupleRemoved += subsetData.getInt(1);
 				tupleRemoved += 1;
 			}
 			
 			if (finalTupleRemoved >= k) {
 			    // it is possible to print out the set of tuples we are removing - not implemented yet
-				System.out.println("Tuple removed: " + String.valueOf(tupleRemoved));
-				System.out.println("Final tuple removed: " + String.valueOf(finalTupleRemoved));
 				return tupleRemoved;
 			}
 			else {
@@ -225,15 +210,14 @@ public class PostgreSqlExample {
 	 * Construct adjacency matrix for the attributes, then do BFS on one attribute. If there exists attributes not reachable,
 	 * then the table containing that attribute can be considered separately. 
 	 */
-	private ArrayList<HashSet<String>> dividable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs) {
-		
+	private ArrayList<HashSet<String>> dividable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types) throws SQLException {
 		ArrayList<HashSet<String>> groups = new ArrayList<HashSet<String>>();
 		groups.add(new HashSet<String>());
 		groups.add(new HashSet<String>());
 		HashMap<String, Integer> attr_id = new HashMap<String, Integer>();
 		
 		int index = 0;
-		for (String attr: attrs) {
+		for (String attr: attrs_types.keySet()) {
 			attr_id.put(attr, index);
 			index += 1;
 		}
@@ -295,24 +279,23 @@ public class PostgreSqlExample {
 		return groups;
 	}
 	
-	private int decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<HashSet<String>> groups) throws SQLException {
+	private int decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types, ArrayList<HashSet<String>> groups) throws SQLException {
 		HashSet<String> group1 = groups.get(0);
 		HashSet<String> group2 = groups.get(1);
 		ArrayList<Integer> minK = new ArrayList<Integer>();
 		
 		String queryGroup1 = "";
 		for (String tableName: group1) {
-			queryGroup1 += tableName + " NATURAL JOIN ";
+			queryGroup1 += "\"" + tableName + "\" NATURAL JOIN ";
 		}
 		queryGroup1 = "select count (*) from "+ queryGroup1.substring(0, queryGroup1.length()-14);
-		
+		//System.out.println(queryGroup1);
 		String queryGroup2 = "";
 		for (String tableName: group2) {
-			queryGroup2 += tableName + " NATURAL JOIN ";
+			queryGroup2 += "\"" + tableName + "\" NATURAL JOIN ";
 		}
 		queryGroup2 = "select count (*) from "+ queryGroup2.substring(0, queryGroup2.length()-14);
-		System.out.println(queryGroup1);
-		System.out.println(queryGroup2);
+		//System.out.println(queryGroup2);
 		ResultSet rs = statement.executeQuery(queryGroup1);
 		rs.next();
 		int sizeOfGroup1InRelations = rs.getInt(1);
@@ -332,90 +315,152 @@ public class PostgreSqlExample {
                     
 					HashMap<String, ArrayList<String>> tables_attrs_1 = new HashMap<>();
 	    			HashMap<String, ArrayList<String>> tables_attrs_2 = new HashMap<>();
-	    			HashSet<String> attrs_1 = new HashSet<String>();
-	    			HashSet<String> attrs_2 = new HashSet<String>();						    			
+	    			HashMap<String, String> attrs_types_1 = new HashMap<String, String>();
+	    			HashMap<String, String> attrs_types_2 = new HashMap<String, String>();						    			
 	    			
 	    			for (String tableName: group1) {
 	    				tables_attrs_1.put(tableName, tables_attrs.get(tableName));
-	    				attrs_1.addAll(tables_attrs.get(tableName));
 	    			}
 	    			for (String tableName: group2) {
 	    				tables_attrs_2.put(tableName, tables_attrs.get(tableName));
-	    				attrs_2.addAll(tables_attrs.get(tableName));
+	    			}
+	    			for (ArrayList<String> attrs: tables_attrs_1.values()) {
+	    				for (String attrName: attrs) {
+	    					attrs_types_1.put(attrName, attrs_types.get(attrName));
+	    				}
+	    			}
+	    			for (ArrayList<String> attrs: tables_attrs_2.values()) {
+	    				for (String attrName: attrs) {
+	    					attrs_types_2.put(attrName, attrs_types.get(attrName));
+	    				}
 	    			}
 	    			
-	    			int group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1);
-	    			int group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2);
-	    			System.out.println(k1);
-	    			System.out.println(group1Removed);
-	    			System.out.println(k2);
-	    			System.out.println(group2Removed);
+	    			int group1Removed = setUp(k1, statement, tables_attrs_1, attrs_types_1);
+	    			int group2Removed = setUp(k2, statement, tables_attrs_2, attrs_types_2);
 	    			minK.add(group1Removed + group2Removed);
-	    			
+	    			//System.out.print("group1Removed: ");
+	    			//System.out.println(group1Removed);
+	    			//System.out.print("group2Removed: ");
+	    			//System.out.println(group2Removed);
 	    			break;						    			
 				}
 			}			    			
 		}
-		System.out.println(minK);
+		//System.out.println(minK);
 	    Collections.sort(minK);
 	    return minK.get(0);
 	}
 	
-	private int generalDP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection) throws SQLException {
-		String[] tables = (String[]) tables_attrs.keySet().toArray();
-		int [][] dp = new int[tables_attrs.size()][k+1];
-		HashMap<String, ArrayList<Integer>> tables_removable = new HashMap<String, ArrayList<Integer>>();
+	private int generalDP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashMap<String, String> attrs_types, HashSet<String> intersection) throws SQLException {
+		Object[] tables = tables_attrs.keySet().toArray();
+		ArrayList<ArrayList<Integer>> dp = new ArrayList<ArrayList<Integer>>();
+		Object[] commonAttrs = intersection.toArray();
 		
 		String queryFrom = "";
-		for (String tableName: tables) {
-			queryFrom += tableName + " NATURAL JOIN ";
+		for (Object tableName: tables) {
+			queryFrom += "\"" + (String) tableName + "\" NATURAL JOIN ";
 		}
 		queryFrom = queryFrom.substring(0, queryFrom.length()-14);
 		
-		for (String tableName: tables) {
-			ArrayList<Integer> row_removable = new ArrayList<Integer>();
-			String queryGroupby = tables_attrs.get(tableName).toString();
-			queryGroupby = queryGroupby.substring(1, queryGroupby.length()-1);
-			ResultSet tableData = statement.executeQuery("select count(*), " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby + " order by count(*) desc");
-			while (tableData.next() && row_removable.size() <= k) {
-				row_removable.add(tableData.getInt(1));
-			}
-			for (int i = 1; i < row_removable.size(); i ++) {
-				row_removable.set(i, row_removable.get(i-1) + row_removable.get(i));
-			}
-			tables_removable.put(tableName, row_removable);
+		String queryGroupby = "";
+		for (String attrName: intersection) {
+			queryGroupby += "\"" + attrName + "\",";
 		}
+		queryGroupby = queryGroupby.substring(0, queryGroupby.length()-1);
 		
-		for (int i = 0; i <= k; i ++) {
-			dp[0][i] = tables_removable.get(tables[0]).get(i);
+		//System.out.println("select " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby);
+
+		ResultSet tableData = statement.executeQuery("select " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby);
+		ArrayList<ArrayList<Object>> commonAttrsVals = new ArrayList<ArrayList<Object>>();
+		int commonCount = 0;
+		while (tableData.next()) {
+			ArrayList<Object> commonAttrVal = new ArrayList<Object>();
+			for (int i = 0; i < commonAttrs.length; i++) {
+				  commonAttrVal.add(tableData.getObject((String)commonAttrs[i]));
+			}	
+			commonAttrsVals.add(commonAttrVal);
 		}
-		
-		for (int i = 0; i < dp.length; i++) {
-			for (int j = 0; j <= k; j++) {
-				int[] ij = new int[k+1];
-				for (int kk = 0; kk <= k; kk++) {
-					ij[kk] = dp[i-1][kk];// + "number of rows deleted from delete k-kk rows in this table"
-					int numOfRowDeleted = 0;
-					while (kk + tables_removable.get(tables[i]).get(numOfRowDeleted)< k) {
-						numOfRowDeleted += 1;
-					}
-					ij[kk] += numOfRowDeleted;
+		// create new table
+		for (int i = 0; i < tables.length; i++) {	
+			String newTable = "";
+			for (String attrNames: tables_attrs.get(tables[i])) {
+				if (!intersection.contains(attrNames)) {
+					newTable += " \"" + attrNames + "\" " + attrs_types.get(attrNames) + ", ";
 				}
-				Arrays.sort(ij);
-				dp[i][j] = ij[0];
 			}
+			newTable = newTable.substring(0, newTable.length()-2);
+			newTable = "create table \"sub" + tables[i] + "\" (" + newTable + ")"; 
+			//System.out.println(newTable);
+			statement.executeUpdate(newTable);
 		}
+		for (ArrayList<Object> commonAttrsVal: commonAttrsVals) {
+			
+			
+			HashMap<String, ArrayList<String>> subTablesAttrs = new HashMap<String, ArrayList<String>>();
+			HashMap<String, String> subAttrs_types = new HashMap<String, String>();
+				
+			
+			
+			// insert the tuples into new tables
+		    for (int i = 0; i < tables.length; i++) {
+		    	ArrayList<String> tableAttrs = new ArrayList<String>();
+		    	String select = "";
+		    	for (String attrName: tables_attrs.get(tables[i])) {
+		    		if (!intersection.contains(attrName)) {
+		    			tableAttrs.add(attrName);
+		    			subAttrs_types.put(attrName, attrs_types.get(attrName));
+		    			select += "\"" + attrName + "\" ";
+		    		}
+		    		subTablesAttrs.put("sub"+tables[i], tableAttrs);
+		    	}
+		    	String insert = "select " + select + " from \"" + tables[i] + "\" where ";
+		    	for (int j = 0; j < commonAttrs.length; j++) {
+		    		insert += "\"" + commonAttrs[j] + "\" = " + commonAttrsVal.get(j) + " and ";
+		    	}
+		    	insert = insert.substring(0, insert.length()-5);
+		    	insert = "insert into \"sub" + tables[i] + "\" " + insert;
+		    	//System.out.println(insert);
+		    	statement.executeUpdate(insert);
+		    }
+		    
+		    
+		    
+		    
+		    ArrayList<Integer> row  = new ArrayList<Integer>();
+		    for (int i = 0; i <= k; i++) {
+		    	if (dp.size() == 0) {
+		    		row.add(setUp(i, statement, subTablesAttrs, subAttrs_types));
+		    	}
+		    	else {
+		    		 ArrayList<Integer> candidates = new ArrayList<Integer>();
+		    		 for (int j = 0; j <= i; j ++) {
+		    			 //System.out.println(i-j);
+		    			 candidates.add(dp.get(commonCount-1).get(j) + setUp(i-j, statement, subTablesAttrs, subAttrs_types));
+		    		 }
+		    		 int minVal = Integer.MAX_VALUE;
+		    		 for (int j = 0; j < candidates.size(); j ++) {
+		    			 if (candidates.get(j) < minVal) {
+		    				 minVal = candidates.get(j);
+		    			 }
+		    		 }
+		    		 row.add(minVal);
+		    	}
+		    	
+		    }
+		    dp.add(row);
+		    System.out.println(dp);
+		    commonCount += 1;
+    
+		    for (int i = 0; i < tables.length; i++) {
+		    	String tableName = "sub" + (String) tables[i];
+		    	statement.executeUpdate("delete from \"" + tableName + "\"");
+		    }
 		
-		int minVal = Integer.MAX_VALUE;
-		for (int i = 0; i < dp[0].length; i ++) {
-			if (dp[i][k] < minVal) {
-				minVal = dp[i][k];
-			}
+		
 		}
+
+		return dp.get(dp.size()-1).get(k);
 		
-
-		return minVal;
-
 		
 	}
 	
@@ -424,22 +469,26 @@ public class PostgreSqlExample {
 	
 	public static void main(String[] args) {
 		// movielens is an example
-		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/movielens", "postgres", "postgres")) {
+		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/test2", "postgres", "postgres")) {
 
-			System.out.println("Connected to PostgreSQL database!");
 			
 			/*
 			Statement statement = connection.createStatement();
-			for (int i = 1; i <= 1000; i++) {
-				//String a = String.valueOf(r.nextInt((943 - 1) + 1) + 1);
-				statement.executeUpdate("insert into decompose (decompose) values (" + String.valueOf(i) + ")");
+			
+			Random r = new Random();
+			for (int i = 1; i <= 10; i++) {
+				
+				//Integer a = r.nextInt((1000 - 1) + 1) + 1;
+				
+				Integer c = r.nextInt((3-1)+1)+1;
+				statement.executeUpdate("insert into \"testAC\" (\"A\", \"C\") values (" + String.valueOf(i) + ", " + String.valueOf(c)  + ")");
 			}
 			*/
-	        
+			
 			// initialize k
-			int k = 1001;
+			int k = 6;
 		    HashMap<String, ArrayList<String>> tables_attrs = new HashMap<>();     // the attributes in each table
-		    HashSet<String> attrs = new HashSet<String>();
+		    HashMap<String, String> attrs_types = new HashMap<String, String>();
 		
 			// find table names
 			DatabaseMetaData databaseMetaData = connection.getMetaData();
@@ -452,22 +501,22 @@ public class PostgreSqlExample {
 			Statement statement = connection.createStatement();
 			// iterate through every table
 			for (String key: tables_attrs.keySet()) {
-				resultset = statement.executeQuery("select * from " + key + " FETCH first 1 rows only");
+				resultset = statement.executeQuery("select * from \"" + key + "\" WHERE 1 < 0");
 				ResultSetMetaData rsmd = resultset.getMetaData();
 				for (int i = 1; i <= rsmd.getColumnCount(); i++) {
 					tables_attrs.get(key).add(rsmd.getColumnName(i));
-					attrs.add(rsmd.getColumnName(i));
+					attrs_types.put(rsmd.getColumnName(i), rsmd.getColumnTypeName(i));
+					
 				}
 			}
 			
 			
 
 			// start calculation
-			PostgreSqlExample test = new PostgreSqlExample(k, statement, tables_attrs, attrs);
+			PostgreSqlExample test = new PostgreSqlExample(k, statement, tables_attrs, attrs_types);
 		
 		}
 		catch (SQLException e) {
-			System.out.println("Connection failure.");
 			e.printStackTrace();
 		}
 	
