@@ -83,7 +83,7 @@ public class PostgreSqlExample {
 					}
 					else { // not dividable, goto general case 2
 			    		if (intersection.size() != 0) {
-			    			return generalDP(k, statement, tables_attrs, attrs, intersection); 
+			    			return generalDP(k, statement, tables_attrs, attrs, intersection, constraints); 
 			    		}
 			    		else {
 			    			// NP-hard
@@ -240,8 +240,35 @@ public class PostgreSqlExample {
 		groups.add(new HashSet<String>());
 		HashMap<String, Integer> attr_id = new HashMap<String, Integer>();
 		
+		HashMap<String, ArrayList<String>> new_tables_attrs = new HashMap<String, ArrayList<String>>();
+		HashSet<String> new_attrs = new HashSet<String>();
+		
+		if (constraints != null) {
+			for (String tableName: tables_attrs.keySet()) {
+				ArrayList<String> table_attrs = tables_attrs.get(tableName);
+				ArrayList<String> new_table_attrs = new ArrayList<String>();
+				for (String attrName: table_attrs) {
+					if (!constraints.containsKey(attrName)) {
+						new_table_attrs.add(attrName);
+					}
+				}
+				new_tables_attrs.put(tableName, new_table_attrs);
+				
+			}
+			for (String attrName: attrs) {
+				if (!constraints.containsKey(attrName)){
+					new_attrs.add(attrName);
+				}
+			}
+		}
+		System.out.println(tables_attrs);
+		System.out.println(attrs);
+		System.out.println(new_tables_attrs);
+		System.out.println(new_attrs);
+		
+		
 		int index = 0;
-		for (String attr: attrs) {
+		for (String attr: new_attrs) {
 			attr_id.put(attr, index);
 			index += 1;
 		}
@@ -254,7 +281,7 @@ public class PostgreSqlExample {
 			}
 		}
 		//System.out.println(attrs.size());
-		for (ArrayList<String> attr : tables_attrs.values()) {
+		for (ArrayList<String> attr : new_tables_attrs.values()) {
 			for (int i = 1; i < attr.size(); i++) {
 				int base = attr_id.get(attr.get(0));				
 				//System.out.println("Base:" + String.valueOf(base));
@@ -288,8 +315,8 @@ public class PostgreSqlExample {
 		
 		//System.out.println(visited);
 		
-		for (String tableName: tables_attrs.keySet()) {
-			for (String attr: tables_attrs.get(tableName)) {
+		for (String tableName: new_tables_attrs.keySet()) {
+			for (String attr: new_tables_attrs.get(tableName)) {
 				if (visited.contains(attr_id.get(attr))) {
 					groups.get(0).add(tableName);					
 					break;
@@ -313,16 +340,18 @@ public class PostgreSqlExample {
 			queryGroup1 += "\"" + tableName + "\" NATURAL JOIN ";
 		}
 		String where = "";
+//		System.out.print("group1: ");
+//		System.out.println(group1);
 		queryGroup1 = "select count (*) from "+ queryGroup1.substring(0, queryGroup1.length()-14);
 		if (constraints != null) {
-			
 			for (String attrName: constraints.keySet()) {
 				where += "\"" + attrName + "\" = " + constraints.get(attrName).toString() + " AND ";
 			}
 		    where = where.substring(0, where.length()-5);
 			queryGroup1 += " where " + where;
 		}
-		//System.out.println(queryGroup1);
+//		System.out.print("queryGroup1: ");
+//		System.out.println(queryGroup1);
 		
 		String queryGroup2 = "";
 		for (String tableName: group2) {
@@ -332,7 +361,10 @@ public class PostgreSqlExample {
 		if (constraints != null) {
 			queryGroup2 += " where " + where;
 		}
-		//System.out.println(queryGroup2);
+//		System.out.print("group2: ");
+//		System.out.println(group2);
+//		System.out.print("queryGroup2: ");
+//		System.out.println(queryGroup2);
 		ResultSet rs = statement.executeQuery(queryGroup1);
 		rs.next();
 		int sizeOfGroup1InRelations = rs.getInt(1);
@@ -343,6 +375,7 @@ public class PostgreSqlExample {
 		
 		
 		for (int k1 = 0; k1 <= k; k1 ++) {
+//			System.out.println(constraints);
 			for (int k2 = 0; k2 <= k; k2 ++) {
 				// select count(*) from join gropu1/group2
 				if (k1*sizeOfGroup2InRelations + k2*sizeOfGroup1InRelations - k1*k2 < k) {
@@ -368,12 +401,23 @@ public class PostgreSqlExample {
 	    			for (ArrayList<String> attrNames: tables_attrs_2.values()) {
 	    				attrs_2.addAll(attrNames);
 	    			}	    			
-	    			
-	    			//System.out.print("k1: ");
-	    			//System.out.println(k1);
+//	    			System.out.println(constraints);
+                    System.out.print("k: ");
+                    System.out.println(k);
+	    			System.out.print("k1: ");
+	    			System.out.println(k1);
+                    System.out.println(tables_attrs_1);
+                    System.out.println(attrs_1);
+	    			System.out.println(constraints);
+
 	    			Integer group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1, constraints);
-	    			//System.out.print("k2: ");
-	    			//System.out.println(k2);
+                    System.out.print("k: ");
+                    System.out.println(k);
+	    			System.out.print("k2: ");
+	    			System.out.println(k2);
+	    			System.out.println(tables_attrs_2);
+                    System.out.println(attrs_2);
+	    			System.out.println(constraints);
 	    			Integer group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2, constraints);
 	    			if (group1Removed == null || group2Removed == null) {
 	    				return null;
@@ -381,14 +425,16 @@ public class PostgreSqlExample {
 	    			if (group1Removed >= 0 && group2Removed >= 0) {
 	    				minK.add(group1Removed + group2Removed);
 	    			}
-	    			//System.out.print("group1Removed: ");
-	    			//System.out.println(group1Removed);
-	    			//System.out.print("group2Removed: ");
-	    			//System.out.println(group2Removed);
+	    			System.out.println(constraints);
+//	    			System.out.print("group1Removed: ");
+//	    			System.out.println(group1Removed);
+//	    			System.out.print("group2Removed: ");
+//	    			System.out.println(group2Removed);
+
 				}
 			}			    			
 		}
-		//System.out.println(minK);
+		
 	    Collections.sort(minK);
 	    if (minK.size() > 0) {
 	    	return minK.get(0);
@@ -396,7 +442,7 @@ public class PostgreSqlExample {
 	    return -1;
 	}
 	
-	private Integer generalDP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection) throws SQLException {
+	private Integer generalDP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, HashMap<String, Object> constraints) throws SQLException {
 		Object[] tables = tables_attrs.keySet().toArray();
 		ArrayList<ArrayList<Integer>> dp = new ArrayList<ArrayList<Integer>>();
 		Object[] commonAttrs = intersection.toArray();
@@ -413,7 +459,7 @@ public class PostgreSqlExample {
 		}
 		queryGroupby = queryGroupby.substring(0, queryGroupby.length()-1);
 		
-		//System.out.println("select " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby);
+//		System.out.println("select " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby);
 
 		// all values of common attributes
 		ResultSet tableData = statement.executeQuery("select " + queryGroupby + " from " + queryFrom + " group by " + queryGroupby);
@@ -426,38 +472,31 @@ public class PostgreSqlExample {
 			}	
 			commonAttrsVals.add(commonAttrVal);
 		}
-		//System.out.println(commonAttrsVals);
+//		System.out.println(commonAttrsVals);
+		HashMap<String, Object> newConstraints = new HashMap<String, Object>();
+		if (constraints != null) {
+			for (String key: constraints.keySet()) {
+				newConstraints.put(key, constraints.get(key));
+			}
+		}
 		
-		
-		
+
 		for (ArrayList<Object> commonAttrsVal: commonAttrsVals) {
-			// create constraints
-			HashMap<String, Object> constraints = new HashMap<String, Object>();
 			for (int i = 0; i < commonAttrs.length; i++) {
-				constraints.put((String)commonAttrs[i], commonAttrsVal.get(i));
+				newConstraints.put((String)commonAttrs[i], commonAttrsVal.get(i));
 			}
-			//System.out.println(constraints);
-			
-			HashMap<String, ArrayList<String>> subTablesAttrs = new HashMap<String, ArrayList<String>>();
-			HashSet<String> subAttrs = new HashSet<String>();
-			for (String table: tables_attrs.keySet()) {
-				subTablesAttrs.put(table, tables_attrs.get(table));
-			}
-			for (String attr: attrs) {
-				subAttrs.add(attr);
-			}
-			for (String table: subTablesAttrs.keySet()) {
-				ArrayList<String> table_attrs = subTablesAttrs.get(table);
-				table_attrs.removeAll(intersection);
-				subTablesAttrs.put(table, table_attrs);
-			}
-			subAttrs.removeAll(intersection);
-			
 			
 		    ArrayList<Integer> row  = new ArrayList<Integer>();
 		    for (int i = 0; i <= k; i++) {
+		    	System.out.print("i: ");
+		    	System.out.println(i);
+		    	System.out.println(tables_attrs);
+	    		System.out.println(attrs);
+	    		System.out.println(newConstraints);
 		    	if (dp.size() == 0) {
-		    		Integer j = setUp(i, statement, subTablesAttrs, subAttrs, constraints);
+		    		Integer j = setUp(i, statement, tables_attrs, attrs, newConstraints);
+		    		System.out.print("j: ");
+		    		System.out.println(j);
 		    		if (j == null) {
 		    			return null;
 		    		}
@@ -470,10 +509,11 @@ public class PostgreSqlExample {
 		    	}
 		    	else {
 		    		 ArrayList<Integer> candidates = new ArrayList<Integer>();
+		    		 // the new possible common attributes values to remove j final tuples
 		    		 for (int j = 0; j <= i; j ++) {
 		    			 //System.out.println(i-j);
 		    			 if (dp.get(commonCount-1).get(j) >= 0) {
-		    				 int c = setUp(i-j, statement, subTablesAttrs, subAttrs, constraints);
+		    				 int c = setUp(i-j, statement, tables_attrs, attrs, newConstraints);
 		    				 if (c >= 0) {
 		    					 candidates.add(dp.get(commonCount-1).get(j) + c);
 		    				 }
@@ -492,15 +532,14 @@ public class PostgreSqlExample {
 		    			 row.add(minVal);
 		    		 }	 
 		    	}
-		    	
 		    }
 		    dp.add(row);
 		    System.out.println(dp);
-		    commonCount += 1;		
-		    
-		
+		    commonCount += 1;
 		}
-
+		System.out.print("abc");
+		System.out.println(dp);
+		
 		return dp.get(dp.size()-1).get(k);
 		
 	}
@@ -510,7 +549,7 @@ public class PostgreSqlExample {
 	
 	public static void main(String[] args) {
 		// movielens is an example
-		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/test2", "postgres", "postgres")) {
+		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/test3", "postgres", "postgres")) {
 
 			
 			/*
@@ -527,7 +566,7 @@ public class PostgreSqlExample {
 			*/
 			
 			// initialize k
-			int k = 14;
+			int k = 4;
 		    HashMap<String, ArrayList<String>> tables_attrs = new HashMap<>();     // the attributes in each table
 		    HashSet<String> attrs = new HashSet<String>();
 		
