@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -239,41 +240,15 @@ public class PostgreSqlExample {
 		groups.add(new HashSet<String>());
 		groups.add(new HashSet<String>());
 		HashMap<String, Integer> attr_id = new HashMap<String, Integer>();
-		
-		HashMap<String, ArrayList<String>> new_tables_attrs = new HashMap<String, ArrayList<String>>();
-		HashSet<String> new_attrs = new HashSet<String>();
-		
-		if (constraints != null) {
-			for (String tableName: tables_attrs.keySet()) {
-				ArrayList<String> table_attrs = tables_attrs.get(tableName);
-				ArrayList<String> new_table_attrs = new ArrayList<String>();
-				for (String attrName: table_attrs) {
-					if (!constraints.containsKey(attrName)) {
-						new_table_attrs.add(attrName);
-					}
-				}
-				new_tables_attrs.put(tableName, new_table_attrs);
-				
-			}
-			for (String attrName: attrs) {
-				if (!constraints.containsKey(attrName)){
-					new_attrs.add(attrName);
-				}
-			}
-		}
-		System.out.println(tables_attrs);
-		System.out.println(attrs);
-		System.out.println(new_tables_attrs);
-		System.out.println(new_attrs);
-		
+
 		
 		int index = 0;
-		for (String attr: new_attrs) {
+		for (String attr: attrs) {
 			attr_id.put(attr, index);
 			index += 1;
 		}
 		
-		
+		System.out.println(attr_id);
 		int [][] adjacency = new int[attr_id.size()][attr_id.size()];
 		for (int i = 0; i < adjacency.length; i++) {
 			for (int j = 0; j < adjacency.length; j++) {
@@ -281,7 +256,7 @@ public class PostgreSqlExample {
 			}
 		}
 		//System.out.println(attrs.size());
-		for (ArrayList<String> attr : new_tables_attrs.values()) {
+		for (ArrayList<String> attr : tables_attrs.values()) {
 			for (int i = 1; i < attr.size(); i++) {
 				int base = attr_id.get(attr.get(0));				
 				//System.out.println("Base:" + String.valueOf(base));
@@ -315,8 +290,8 @@ public class PostgreSqlExample {
 		
 		//System.out.println(visited);
 		
-		for (String tableName: new_tables_attrs.keySet()) {
-			for (String attr: new_tables_attrs.get(tableName)) {
+		for (String tableName: tables_attrs.keySet()) {
+			for (String attr: tables_attrs.get(tableName)) {
 				if (visited.contains(attr_id.get(attr))) {
 					groups.get(0).add(tableName);					
 					break;
@@ -326,7 +301,9 @@ public class PostgreSqlExample {
 				}
 			}
 		}
-		
+//		System.out.print("visited: ");
+//		System.out.println(visited);
+//	    System.out.println(groups);
 		return groups;
 	}
 	
@@ -479,24 +456,45 @@ public class PostgreSqlExample {
 				newConstraints.put(key, constraints.get(key));
 			}
 		}
+        
+        
+        HashMap<String, ArrayList<String>> new_tables_attrs = new HashMap<String, ArrayList<String>>();
+        HashSet<String> new_attrs = new HashSet<String>();
+        
+        for (String tableName: tables_attrs.keySet()) {
+            ArrayList<String> table_attrs = tables_attrs.get(tableName);
+            ArrayList<String> new_table_attrs = new ArrayList<String>();
+            for (String attrName: table_attrs) {
+                if ((constraints != null && !constraints.containsKey(attrName)) || constraints == null) {
+                    new_table_attrs.add(attrName);
+                }
+            }
+            new_tables_attrs.put(tableName, new_table_attrs);
+            
+        }
+        for (String attrName: attrs) {
+            if ((constraints != null && !constraints.containsKey(attrName)) || constraints == null){
+                new_attrs.add(attrName);
+            }
+        }
 		
-
+        
 		for (ArrayList<Object> commonAttrsVal: commonAttrsVals) {
 			for (int i = 0; i < commonAttrs.length; i++) {
 				newConstraints.put((String)commonAttrs[i], commonAttrsVal.get(i));
 			}
+            
+
+            System.out.println(tables_attrs);
+            System.out.println(attrs);
+            System.out.println(new_tables_attrs);
+            System.out.println(new_attrs);
 			
 		    ArrayList<Integer> row  = new ArrayList<Integer>();
 		    for (int i = 0; i <= k; i++) {
-		    	System.out.print("i: ");
-		    	System.out.println(i);
-		    	System.out.println(tables_attrs);
-	    		System.out.println(attrs);
-	    		System.out.println(newConstraints);
+   
 		    	if (dp.size() == 0) {
-		    		Integer j = setUp(i, statement, tables_attrs, attrs, newConstraints);
-		    		System.out.print("j: ");
-		    		System.out.println(j);
+		    		Integer j = setUp(i, statement, new_tables_attrs, new_attrs, newConstraints);
 		    		if (j == null) {
 		    			return null;
 		    		}
@@ -513,7 +511,7 @@ public class PostgreSqlExample {
 		    		 for (int j = 0; j <= i; j ++) {
 		    			 //System.out.println(i-j);
 		    			 if (dp.get(commonCount-1).get(j) >= 0) {
-		    				 int c = setUp(i-j, statement, tables_attrs, attrs, newConstraints);
+		    				 int c = setUp(i-j, statement, new_tables_attrs, new_attrs, newConstraints);
 		    				 if (c >= 0) {
 		    					 candidates.add(dp.get(commonCount-1).get(j) + c);
 		    				 }
@@ -589,10 +587,13 @@ public class PostgreSqlExample {
 					
 				}
 			}
+			long start = System.currentTimeMillis();
 			
+			System.out.println(start);
 			// start calculation
 			PostgreSqlExample test = new PostgreSqlExample(k, statement, tables_attrs, attrs);
-		
+
+		    System.out.println(System.currentTimeMillis() - start);
 		}
 		catch (SQLException e) {
 			e.printStackTrace();
