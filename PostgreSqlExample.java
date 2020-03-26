@@ -24,14 +24,25 @@ public class PostgreSqlExample {
 
 	
 	PostgreSqlExample(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<String> projection, boolean fullJoin) throws SQLException{
-		Integer result = setUp(k, statement, tables_attrs, attrs, new HashMap<String, Object>(), projection, fullJoin);	
+		HashMap<String, ArrayList<HashMap<String, Object>>> result = setUp(k, statement, tables_attrs, attrs, new HashMap<String, Object>(), projection, fullJoin);	
 		System.out.println(result);
+		int num = 0;
+		for (String tableName: result.keySet()) {
+			ArrayList<HashMap<String, Object>> toRemove = result.get(tableName);
+			num += toRemove.size();
+			for (HashMap<String, Object> tuple: toRemove) {
+				if (tuple.containsKey("number")) {
+					num += (int) tuple.get("number") - 1;
+				}
+			}
+		}
+		System.out.println(num);
 	}
 	
-	Integer setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
+	private HashMap<String, ArrayList<HashMap<String, Object>>> setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
 		
 		if (k == 0) {
-			return 0;
+			return new HashMap<String, ArrayList<HashMap<String, Object>>>();
 		}
 		
 		// if head is empty, test if triad; if not, networkflow
@@ -66,19 +77,19 @@ public class PostgreSqlExample {
 		
 		try {
 			    // base case 1
-				int base_case_1 = this.onlyOneTable(k, statement, tables_attrs, attrs, constraints, projection, fullJoin);
+				HashMap<String, ArrayList<HashMap<String, Object>>> base_case_1 = onlyOneTable(k, statement, tables_attrs, attrs, constraints, projection, fullJoin);
 				// base case 2
-				int base_case_2 = Integer.MIN_VALUE;
+				HashMap<String, ArrayList<HashMap<String, Object>>> base_case_2 = null;
 				// general case 1
 				int general_case_1 = Integer.MIN_VALUE;
 				// general case 2
 				int general_case_2 = Integer.MIN_VALUE;
 				
-				if (base_case_1 == -1) {
+				if (base_case_1 == null) {
 					// not enough data for k
-					return -1;
+					return null;
 				}
-				else if (base_case_1 == 0) {
+				else if (base_case_1.keySet().toArray()[0] == null) {
 					// next base case
 			    	base_case_2 = this.existsSubset(k, statement, tables_attrs, attrs, intersection, smallestTable, constraints, projection, fullJoin);
 				}
@@ -86,11 +97,11 @@ public class PostgreSqlExample {
 					return base_case_1;
 				}
 				
-				if (base_case_2 == -1) {
+				if (base_case_2 == null) {
 					// not enough data for k
-					return -1;
+					return null;
 				}
-				else if (base_case_2 == 0) {
+				else if (base_case_2.keySet().toArray()[0] == null) {
 					// goto general case 1
 					ArrayList<HashSet<String>> groups = dividable(statement, tables_attrs, attrs, constraints);
 					if (groups.get(1).size() != 0) { 				// is dividable
@@ -132,38 +143,64 @@ public class PostgreSqlExample {
 		}
 	
 
-	private int onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
+	private HashMap<String, ArrayList<HashMap<String, Object>>> onlyOneTable(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
 		// only 1 table
 		//System.out.println(tables_attrs.size());
+		ArrayList<HashMap<String, Object>> ret = new ArrayList<HashMap<String, Object>>();
 		if (tables_attrs.size() == 1) {
 			if (fullJoin) {
 				// get number of rows
 				String tableName = "\"" + (String) tables_attrs.keySet().toArray()[0] + "\"";
 				ResultSet resultset;
-				if (constraints.size() == 0) {
-					resultset = statement.executeQuery("select count(*) from " + tableName);
+				
+				String query = "";
+				String select = "select ";
+				for (String attrName: attrs) {
+					select += "\"" + attrName + "\", ";
 				}
-				else {
+				select = select.substring(0, select.length()-2);
+				query += select + " from " + tableName;
+				if (constraints.size() != 0) {
 					String where = " where ";
-					
 					for (String attrName: constraints.keySet()) {
 						where += "\"" + attrName + "\" = " + constraints.get(attrName).toString() + " AND ";
 					}
 				    where = where.substring(0, where.length()-5);
-					//System.out.println("select count(*) from " + tableName + where);
-					resultset = statement.executeQuery("select count(*) from " + tableName + where);
+				    query += where;
+				}   
+				resultset = statement.executeQuery(query);
+				//System.out.println(query);
+	
+				int tupleRemoved = 0;
+				while (resultset.next() && tupleRemoved < k) {
+					HashMap<String, Object> tup = new HashMap<String, Object>();
+					for (String attrName: attrs) {
+						tup.put(attrName, resultset.getObject(attrName));
+					}
+					if (constraints.size() != 0) {
+						for (String attrName: constraints.keySet()) {
+							tup.put(attrName, constraints.get(attrName));
+						}
+					}
+					ret.add(tup);
+					tupleRemoved += 1;
 				}
 				
-				resultset.next();
-				int numOfRows = resultset.getInt(1);
 				// not enough data
-				if (numOfRows < k) {
-					return -1;			
+				if (tupleRemoved < k) {
+					return null;		
 				}
-				return k;
+				//System.out.println(ret);
+				HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+				r.put((String)tables_attrs.keySet().toArray()[0], ret);
+				return r;
 			}
 			else {
-				String query = "select count (*) ";		
+				String query = "select count (*), ";	
+				for (String attrName: projection) {
+					query += "\"" + attrName + "\", ";
+				}
+				query = query.substring(0, query.length()-2);
 				String tableName = "\"" + (String) tables_attrs.keySet().toArray()[0] + "\"";
 				query += " from " + tableName;
 				if (constraints.size() != 0) {
@@ -180,26 +217,45 @@ public class PostgreSqlExample {
 			    }
 			    groupby = groupby.substring(0, groupby.length()-2);
 			    query += groupby;
-			    query += " order by count(*)";
+			    query += " order by count(*) desc";
 			    //System.out.println(query);
 			    ResultSet resultset = statement.executeQuery(query);
 			    int finalTupleRemoved = 0;
-			    int tupleRemoved = 0;
 			    while (resultset.next() && finalTupleRemoved < k ) {
-			    	tupleRemoved += resultset.getInt(1);
+			    	HashMap<String, Object> tup = new HashMap<String, Object>();
+			    	int tupleRemoved = resultset.getInt(1);
 			    	finalTupleRemoved += 1;
+			    	for (String attrName: attrs) {
+			    		if (!projection.contains(attrName)) {
+			    			tup.put(attrName, attrName);
+			    		}
+			    		else {
+			    			tup.put(attrName, resultset.getObject(attrName));
+			    		}
+					}
+			    	if (constraints.size() != 0) {
+						for (String attrName: constraints.keySet()) {
+							tup.put(attrName, constraints.get(attrName));
+						}
+					}
+			    	tup.put("number", tupleRemoved);
+					ret.add(tup);
 			    }
 			    if (finalTupleRemoved < k) {
-			    	return -1;
+			    	return null;
 			    }
 			    else {
-			    	return tupleRemoved;
+			    	HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+					r.put((String)tables_attrs.keySet().toArray()[0], ret);
+					return r;
 			    }			
 			}
 		}
 		
 		else {
-			return 0;
+			HashMap<String, ArrayList<HashMap<String, Object>>> not_applicable = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+			not_applicable.put(null, null);
+			return not_applicable;
 		}
 	}
 	
@@ -208,10 +264,10 @@ public class PostgreSqlExample {
 	 * If the # of attributes in the table with fewest attributes is the same as the size of the intersection, 
 	 * then all attributes in this table appear in every other tables.
 	 */
-	private int existsSubset(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, String smallestTable, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
-		
+	private HashMap<String, ArrayList<HashMap<String, Object>>> existsSubset(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, String smallestTable, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
+		ArrayList<HashMap<String, Object>> ret = new ArrayList<HashMap<String, Object>>();
 		// keep track of the table with fewest attributes
-
+		
 		boolean existsSubset = false;
 		String subsetTableName = null;
 		
@@ -223,6 +279,14 @@ public class PostgreSqlExample {
 		//System.out.println(tables_attrs);
 		//System.out.println(attrs);
 		if (existsSubset) {
+			ArrayList<String> intersectionCopy = new ArrayList<String>();
+			for (String i: intersection) {
+				intersectionCopy.add(i);
+			}
+			intersectionCopy.retainAll(projection);
+			if (intersectionCopy.size() == 0) {
+				return null;
+			}
 			if (fullJoin) {
 				// Construct query groupby: attr_1, attr_2, ..., attr_x
 				String groupby = "";
@@ -242,7 +306,7 @@ public class PostgreSqlExample {
 				// sort in descending order
 				if (constraints.size() == 0) {
 					//System.out.println("select count(*) " + " from " + query_from + " group by " + groupby + " order by count(*) desc");
-					subsetData = statement.executeQuery("select count(*) " + " from " + query_from + " group by " + groupby + " order by count(*) desc");
+					subsetData = statement.executeQuery("select count(*), " + groupby + " from " + query_from + " group by " + groupby + " order by count(*) desc");
 				}
 				else {
 					String where = " where ";
@@ -253,24 +317,36 @@ public class PostgreSqlExample {
 				    where = where.substring(0, where.length()-5);
 					
 					//System.out.println("select count(*) " + " from " + query_from + where + " group by " + groupby + " order by count(*) desc");
-					subsetData = statement.executeQuery("select count(*) " + " from " + query_from + where + " group by " + groupby + " order by count(*) desc");
+					subsetData = statement.executeQuery("select count(*), " + groupby + " from " + query_from + where + " group by " + groupby + " order by count(*) desc");
 				}
 				
 				
 				int finalTupleRemoved = 0;
 				int tupleRemoved = 0;
+				
 				while (subsetData.next() && finalTupleRemoved < k) {
+					HashMap<String, Object> tup = new HashMap<String, Object>();
 					finalTupleRemoved += subsetData.getInt(1);
 					tupleRemoved += 1;
+					for (String attrName: tables_attrs.get(smallestTable)) {
+						tup.put(attrName, subsetData.getObject(attrName));
+					}
+					if (constraints.size() != 0) {
+						for (String attrName: constraints.keySet()) {
+							tup.put(attrName, constraints.get(attrName));
+						}
+					}
+					ret.add(tup);
 				}
 				
 				if (finalTupleRemoved >= k) {
-				    // it is possible to print out the set of tuples we are removing - not implemented yet
-					return tupleRemoved;
+					HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+					r.put(smallestTable, ret);
+					return r;
 				}
 				else {
 					// not enough data
-					return -1;
+					return null;
 				}
 			}	
 			else if (projection.containsAll(tables_attrs.get(subsetTableName))){
@@ -294,11 +370,11 @@ public class PostgreSqlExample {
 				}
 				//System.out.println(query);
 				ResultSet resultset = statement.executeQuery(query);
-				HashMap<ArrayList<Object>, Integer> count = new HashMap<ArrayList<Object>, Integer>();
+				HashMap<HashMap<String, Object>, Integer> count = new HashMap<HashMap<String, Object>, Integer>();
 				while (resultset.next()) {
-					ArrayList<Object> vals = new ArrayList<Object>();
-					for (int i = 0; i < tables_attrs.get(smallestTable).size(); i ++) {
-						vals.add(resultset.getObject(tables_attrs.get(smallestTable).get(i)));
+					HashMap<String, Object> vals = new HashMap<String, Object>();
+					for (String attrName: tables_attrs.get(smallestTable)) {
+						vals.put(attrName, resultset.getObject(attrName));
 					}
 					//System.out.println(vals);
 					if (count.containsKey(vals)) {
@@ -316,15 +392,33 @@ public class PostgreSqlExample {
 				ArrayList<Integer> remove = new ArrayList<Integer>(count.values());
 				Collections.sort(remove, Collections.reverseOrder());
 				//System.out.println(remove);
+				HashMap<String, Object> tup = new HashMap<String, Object>();
 				while (finalTupleRemoved < k && tupleRemoved < remove.size()) {
+					for (HashMap<String, Object> toRemove: count.keySet()) {
+						if (count.get(toRemove) == remove.get(tupleRemoved)) {						
+							tup = toRemove;						
+							break;
+						}
+					}
+					
 					finalTupleRemoved += remove.get(tupleRemoved);
 					tupleRemoved += 1;
+					count.remove(tup);
+					if (constraints.size() != 0) {
+						for (String attrName: constraints.keySet()) {
+							tup.put(attrName, constraints.get(attrName));
+						}
+					}
+					ret.add(tup);
+
 				}
 				if (finalTupleRemoved < k) {
-					return -1;
+					return null;
 				}
 				else {
-					return tupleRemoved;
+					HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+					r.put(smallestTable, ret);
+					return r;
 				}
 			}
 			else {
@@ -350,12 +444,17 @@ public class PostgreSqlExample {
 					query += " where " + where;
 				}
 				//System.out.println(query);
-				HashSet<HashMap<String, Object>> nondanglings = new HashSet<HashMap<String, Object>>();
+				ArrayList<HashMap<String, Object>> nondanglings = new ArrayList<HashMap<String, Object>>();
 				ResultSet resultset = statement.executeQuery(query);
 				while (resultset.next()) {
 					HashMap<String, Object> nondangling = new HashMap<String, Object>();
-					for (int i = 1; i <= projection.size(); i++) {
-						nondangling.put(projection.get(i-1), resultset.getObject(i));
+					for (String attrName: tables_attrs.get(smallestTable)) {
+						if (!projection.contains(attrName)) {
+							nondangling.put(attrName, attrName);
+						}
+						else {
+							nondangling.put(attrName, resultset.getObject(attrName));
+						}
 					}
 					nondanglings.add(nondangling);
 				}
@@ -376,7 +475,7 @@ public class PostgreSqlExample {
 				    where = where.substring(0, where.length()-4);
 					query += " where " + where;
 				}
-			    String groupby = "group by ";
+			    String groupby = " group by ";
 			    for (String attrName: projection) {
 			    	groupby += "\"" + attrName + "\", "; 
 			    }
@@ -384,36 +483,62 @@ public class PostgreSqlExample {
 			    query += groupby;
 			    //System.out.println(query);
 			    resultset = statement.executeQuery(query);
-			    ArrayList<Integer> candidates = new ArrayList<Integer>();
-			    HashSet<HashMap<String, Object>> visited = new HashSet<HashMap<String, Object>>();
+			    HashMap<HashMap<String, Object>, Integer> candidates = new HashMap<HashMap<String, Object>, Integer>();
 			    while (resultset.next()) {
 			    	HashMap<String, Object> tuple = new HashMap<String, Object>();
-			    	for (int i = 2; i <= projection.size()+1; i++) {
-			    		tuple.put(projection.get(i-2), resultset.getObject(i));
+			    	for (String attrName: tables_attrs.get(smallestTable)) {
+			    		if (!projection.contains(attrName)) {
+			    			tuple.put(attrName, attrName);
+			    		}
+			    		else {
+			    			tuple.put(attrName, resultset.getObject(attrName));
+			    		}
+			    		
 			    	}
-			    	if (nondanglings.contains(tuple) && !visited.contains(tuple)) {
-			    		candidates.add(resultset.getInt(1));
+			    	
+			    	if (nondanglings.contains(tuple)) {
+			    		candidates.put(tuple, resultset.getInt(1));
+			    		
 			    	}
 			    }
-			    Collections.sort(candidates);
-			    //System.out.println(candidates);
+			    ArrayList<Integer> remove = new ArrayList<Integer>(candidates.values());
+			    Collections.sort(remove);
+			    //System.out.println(remove);
 			    int finalTupleRemoved = 0;
 				int tupleRemoved = 0;
-				int index = 0;
-				while (index < candidates.size() && finalTupleRemoved < k) {
-					tupleRemoved += candidates.get(finalTupleRemoved);
+				while (finalTupleRemoved < k && finalTupleRemoved < remove.size()) {
+					tupleRemoved += remove.get(finalTupleRemoved);
+					HashMap<String, Object> tup = new HashMap<String, Object>();
+					for (HashMap<String, Object> toRemove: candidates.keySet()) {
+						if (candidates.get(toRemove) == remove.get(finalTupleRemoved)) {
+							tup = toRemove;
+							break;
+						}
+					}
+					candidates.remove(tup);
+					tup.put("number", remove.get(finalTupleRemoved));
+					if (constraints.size() != 0) {
+						for (String attrName: constraints.keySet()) {
+							tup.put(attrName, constraints.get(attrName));
+						}
+					}
+					ret.add(tup);
 					finalTupleRemoved += 1;	
 				}
 				if (finalTupleRemoved < k) {
-					return -1;
+					return null;
 				}
 				else {
-					return tupleRemoved;
+					HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+					r.put(smallestTable, ret);
+					return r;
 				}
 			}	
 		}
 		else {
-			return 0;
+			HashMap<String, ArrayList<HashMap<String, Object>>> not_applicable = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+			not_applicable.put(null, null);
+			return not_applicable;
 		}	
 	}
 	
@@ -487,119 +612,19 @@ public class PostgreSqlExample {
 				}
 			}
 		}
-//		System.out.print("visited: ");
-//		System.out.println(visited);
-//	    System.out.println(groups);
+//		//System.out.print("visited: ");
+//		//System.out.println(visited);
+//	    //System.out.println(groups);
 		return groups;
 	}
 	
-	private Integer decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<HashSet<String>> groups, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
+	private HashMap<String, ArrayList<HashMap<String, Object>>> decompose(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<HashSet<String>> groups, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
 		HashSet<String> group1 = groups.get(0);
 		HashSet<String> group2 = groups.get(1);
-		int minK = Integer.MAX_VALUE;
 		boolean group1Boolean = false;
 		boolean group2Boolean = false;
 		int sizeOfGroup1InRelations = 0; 
 		int sizeOfGroup2InRelations = 0;
-		
-		ArrayList<String> attrs_group1 = new ArrayList<String>();
-		for (String tableName: group1) {
-			attrs_group1.addAll(tables_attrs.get(tableName));
-		}
-		int attrs1_size = attrs_group1.size();
-		attrs_group1.removeAll(projection);
-		if (attrs1_size != attrs_group1.size()) {     // non-boolean query	
-			String queryGroup1 = "";
-			for (String tableName: group1) {
-				queryGroup1 += "\"" + tableName + "\" NATURAL JOIN ";
-			}
-			String where = "";
-//					System.out.print("group1: ");
-//					System.out.println(group1);
-			if (fullJoin) {
-				queryGroup1 = "select * from "+ queryGroup1.substring(0, queryGroup1.length()-14);
-			}
-			else {
-				String p = "distinct ";
-				for (String attrName: projection) {
-					p += "\"" + attrName + "\", ";
-				}
-				p = p.substring(0, p.length()-2);
-				queryGroup1 = "select " + p + " from" + queryGroup1.substring(0, queryGroup1.length()-14);
-			}
-			if (constraints.size() != 0) {
-				for (String attrName: constraints.keySet()) {
-					where += "\"" + attrName + "\" = " + constraints.get(attrName).toString() + " AND ";
-				}
-			    where = where.substring(0, where.length()-5);
-				queryGroup1 += " where " + where;
-			}
-//					System.out.print("queryGroup1: ");
-					System.out.println(queryGroup1);
-			ResultSet rs = statement.executeQuery(queryGroup1);
-			while (rs.next()) {
-				sizeOfGroup1InRelations += 1;
-			}			
-		}
-		else {				//  boolean query
-			sizeOfGroup1InRelations = 1;
-			group1Boolean = true;
-		}
-		
-		
-		
-		
-		ArrayList<String> attrs_group2 = new ArrayList<String>();
-		for (String tableName: group2) {
-			attrs_group2.addAll(tables_attrs.get(tableName));
-		}
-		int attrs2_size = attrs_group2.size();
-//		System.out.println(attrs_group2);
-//		System.out.println("???");
-//		System.out.println(projection);
-		attrs_group2.removeAll(projection);
-//		System.out.println(attrs_group2);
-		if (attrs2_size != attrs_group2.size()) {	
-			String queryGroup2 = "";
-			for (String tableName: group2) {
-				queryGroup2 += "\"" + tableName + "\" NATURAL JOIN ";
-			}
-			String where = "";
-			if (fullJoin) {
-				queryGroup2 = "select * from "+ queryGroup2.substring(0, queryGroup2.length()-14);
-			}
-			else {
-				String p = "distinct ";
-				for (String attrName: projection) {
-					p += "\"" + attrName + "\", ";
-				}
-				p = p.substring(0, p.length()-2);
-				queryGroup2 = "select " + p + " from " + queryGroup2.substring(0, queryGroup2.length()-14);
-			}
-			if (constraints.size() != 0) {
-				for (String attrName: constraints.keySet()) {
-					where += "\"" + attrName + "\" = " + constraints.get(attrName).toString() + " AND ";
-				}
-			    where = where.substring(0, where.length()-5);
-				queryGroup2 += " where " + where;
-			}
-			
-				
-	//		System.out.print("group2: ");
-	//		System.out.println(group2);
-//			System.out.print("queryGroup2: ");
-//			System.out.println(queryGroup2);
-			
-			ResultSet rs = statement.executeQuery(queryGroup2);
-			while (rs.next()) {
-				sizeOfGroup2InRelations += 1;
-			}		
-		}
-		else {
-			sizeOfGroup2InRelations = 1;
-			group2Boolean = true;
-		}   
-		
 		HashMap<String, ArrayList<String>> tables_attrs_1 = new HashMap<>();
 		HashMap<String, ArrayList<String>> tables_attrs_2 = new HashMap<>();
 		HashSet<String> attrs_1 = new HashSet<String>();
@@ -624,10 +649,115 @@ public class PostgreSqlExample {
 			if (attrs_1.contains(project)) {
 				projection_1.add(project);
 			}
-			else {
+			if (attrs_2.contains(project)) {
 				projection_2.add(project);
 			}
+			if (constraints.containsKey(project)) {
+				projection_1.add(project);
+				projection_2.add(project);
+			}
+			
 		}
+		
+		ArrayList<String> attrs_group1 = new ArrayList<String>();
+		for (String tableName: group1) {
+			attrs_group1.addAll(tables_attrs.get(tableName));
+		}
+		int attrs1_size = attrs_group1.size();
+		attrs_group1.removeAll(projection);
+		if (attrs1_size != attrs_group1.size()) {     // non-boolean query	
+			String queryGroup1 = "";
+			for (String tableName: group1) {
+				queryGroup1 += "\"" + tableName + "\" NATURAL JOIN ";
+			}
+			String where = "";
+//					//System.out.print("group1: ");
+//					//System.out.println(group1);
+			if (fullJoin) {
+				queryGroup1 = "select * from "+ queryGroup1.substring(0, queryGroup1.length()-14);
+			}
+			else {
+				String p = "distinct ";
+				for (String attrName: projection_1) {
+					p += "\"" + attrName + "\", ";
+				}
+				p = p.substring(0, p.length()-2);
+				queryGroup1 = "select " + p + " from " + queryGroup1.substring(0, queryGroup1.length()-14);
+			}
+			if (constraints.size() != 0) {
+				for (String attrName: constraints.keySet()) {
+					where += "\"" + attrName + "\" = " + constraints.get(attrName).toString() + " AND ";
+				}
+			    where = where.substring(0, where.length()-5);
+				queryGroup1 += " where " + where;
+			}
+//					//System.out.print("queryGroup1: ");
+					//System.out.println(queryGroup1);
+			ResultSet rs = statement.executeQuery(queryGroup1);
+			while (rs.next()) {
+				sizeOfGroup1InRelations += 1;
+			}			
+		}
+		else {				//  boolean query
+			sizeOfGroup1InRelations = 1;
+			group1Boolean = true;
+		}
+		
+		
+		
+		
+		ArrayList<String> attrs_group2 = new ArrayList<String>();
+		for (String tableName: group2) {
+			attrs_group2.addAll(tables_attrs.get(tableName));
+		}
+		int attrs2_size = attrs_group2.size();
+//		//System.out.println(attrs_group2);
+//		//System.out.println("???");
+//		//System.out.println(projection);
+		attrs_group2.removeAll(projection);
+//		//System.out.println(attrs_group2);
+		if (attrs2_size != attrs_group2.size()) {	
+			String queryGroup2 = "";
+			for (String tableName: group2) {
+				queryGroup2 += "\"" + tableName + "\" NATURAL JOIN ";
+			}
+			String where = "";
+			if (fullJoin) {
+				queryGroup2 = "select * from "+ queryGroup2.substring(0, queryGroup2.length()-14);
+			}
+			else {
+				String p = "distinct ";
+				for (String attrName: projection_2) {
+					p += "\"" + attrName + "\", ";
+				}
+				p = p.substring(0, p.length()-2);
+				queryGroup2 = "select " + p + " from " + queryGroup2.substring(0, queryGroup2.length()-14);
+			}
+			if (constraints.size() != 0) {
+				for (String attrName: constraints.keySet()) {
+					where += "\"" + attrName + "\" = " + constraints.get(attrName).toString() + " AND ";
+				}
+			    where = where.substring(0, where.length()-5);
+				queryGroup2 += " where " + where;
+			}
+			
+				
+	//		//System.out.print("group2: ");
+	//		//System.out.println(group2);
+//			//System.out.print("queryGroup2: ");
+			//System.out.println(queryGroup2);
+			
+			ResultSet rs = statement.executeQuery(queryGroup2);
+			while (rs.next()) {
+				sizeOfGroup2InRelations += 1;
+			}		
+		}
+		else {
+			sizeOfGroup2InRelations = 1;
+			group2Boolean = true;
+		}   
+		
+		
 		
 		
 		
@@ -636,68 +766,94 @@ public class PostgreSqlExample {
 				//System.out.println(setUp(1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin));
 				//System.out.println(setUp(1, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin));
 			    //System.out.println(tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
-				return Math.min(setUp(1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin), setUp(1, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin));
+				HashMap<String, ArrayList<HashMap<String, Object>>> remove1 = setUp(1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
+				HashMap<String, ArrayList<HashMap<String, Object>>> remove2 = setUp(1, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
+				if (remove1.size() < remove2.size()) {
+					return remove1;
+				}
+				else {
+					return remove2;
+				}
 			}
 			else {
-				return -1;
+				return null;
 			}
 		}
 		else if (group1Boolean) {
 			int remove1 = Integer.MAX_VALUE;
+			int remove2 = -1;
+			HashMap<String, ArrayList<HashMap<String, Object>>> remove1_objects = null;
 			if (sizeOfGroup2InRelations >= k) {
-				remove1 = setUp(1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
+				remove1_objects = setUp(1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
+				if (remove1_objects != null) {
+				    remove1 = remove1_objects.size();
+				}
 			}
-			int remove2 = setUp(k, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
+			HashMap<String, ArrayList<HashMap<String, Object>>> remove2_objects = setUp(k, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
+			if (remove2_objects != null) {
+				remove2 = remove2_objects.size();
+			}
 			if (remove2 < 0 && remove1 == Integer.MAX_VALUE) {
-				return -1;
+				return null;
 			}
 			if (remove2 > 0 && remove1 == Integer.MAX_VALUE) {
-				return remove2;
+				return remove2_objects;
 			}
 			if (remove2 < 0 && remove1 < Integer.MAX_VALUE) {
-				return remove1;
+				return remove1_objects;
 			}
-			if (remove2 > 0 && remove1 < Integer.MAX_VALUE) {
-				return Math.min(remove1, remove2);
+			if (remove2 < remove1) {
+				return remove2_objects;
+			}
+			else {
+				return remove1_objects;
 			}
 			
 		}
 		else if (group2Boolean) {
 			int remove2 = Integer.MAX_VALUE;
+			int remove1 = -1;
+			HashMap<String, ArrayList<HashMap<String, Object>>> remove2_objects = null;
 			if (sizeOfGroup1InRelations >= k) {
-				remove2 = setUp(1, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
+				remove2_objects = setUp(1, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
+				remove2 = remove2_objects.size();
 			}
-			System.out.println(tables_attrs_2);
-			System.out.println(attrs_2);
-			System.out.println(constraints);
-			System.out.println(projection_2);
-			int remove1 = setUp(k, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
+			//System.out.println(tables_attrs_2);
+			//System.out.println(attrs_2);
+			//System.out.println(constraints);
+			//System.out.println(projection_2);
+			HashMap<String, ArrayList<HashMap<String, Object>>> remove1_objects = setUp(k, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
+			if (remove1_objects != null) {
+				remove1 = remove1_objects.size();
+			}
+			
 			if (remove1 < 0 && remove2 == Integer.MAX_VALUE) {
-				return -1;
+				return null;
 			}
 			if (remove1 > 0 && remove2 == Integer.MAX_VALUE) {
-				return remove1;
+				return remove1_objects;
 			}
 			if (remove1 < 0 && remove2 < Integer.MAX_VALUE) {
-				return remove2;
+				return remove2_objects;
 			}
-			if (remove1 > 0 && remove2 < Integer.MAX_VALUE) {
-				return Math.min(remove1, remove2);
+			if (remove1 < remove2) {
+				return remove1_objects;
+			}
+			else {
+				return remove2_objects;
 			}
 		}
 		
-		
+		HashMap<String, ArrayList<HashMap<String, Object>>> ret = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+		int kMin = Integer.MAX_VALUE;
 		for (int k1 = 0; k1 <= k; k1 ++) {
-//			System.out.println(constraints);
+//			//System.out.println(constraints);
 			for (int k2 = 0; k2 <= k; k2 ++) {
 				// select count(*) from join gropu1/group2
 				if (k1*sizeOfGroup2InRelations + k2*sizeOfGroup1InRelations - k1*k2 < k) {
 					continue;
 				}
 				else {
-                    
-					
-//	    			System.out.println(constraints);
 //                    System.out.print("k: ");
 //                    System.out.println(k);
 //	    			System.out.print("k1: ");
@@ -708,7 +864,7 @@ public class PostgreSqlExample {
 //	    			System.out.println(constraints);
 //	    		    System.out.println(sizeOfGroup1InRelations);
 //	    		    System.out.println(sizeOfGroup2InRelations);
-	    			Integer group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
+					HashMap<String, ArrayList<HashMap<String, Object>>> group1Removed = setUp(k1, statement, tables_attrs_1, attrs_1, constraints, projection_1, fullJoin);
 //                    System.out.print("k: ");
 //                    System.out.println(k);
 //	    			System.out.print("k2: ");
@@ -717,32 +873,50 @@ public class PostgreSqlExample {
 //                    System.out.println(attrs_2);
 //                    System.out.println(projection_2);
 //	    			System.out.println(constraints);
-	    			Integer group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
+					HashMap<String, ArrayList<HashMap<String, Object>>> group2Removed = setUp(k2, statement, tables_attrs_2, attrs_2, constraints, projection_2, fullJoin);
 	    			if (group1Removed == null || group2Removed == null) {
-	    				return null;
+	    				continue;
 	    			}
-	    			if (group1Removed >= 0 && group2Removed >= 0 && group1Removed + group2Removed < minK) {
-	    				minK = group1Removed + group2Removed;
+	    			
+	    			if (group1Removed.size() >= 0 && group2Removed.size() >= 0 && group1Removed.size() + group2Removed.size() < kMin) {
+	    				ret.clear();
+	    				for (String tableName: group1Removed.keySet()) {
+	    					ret.put(tableName, group1Removed.get(tableName));
+	    				}
+	    				for (String tableName: group2Removed.keySet()) {
+	    					ret.put(tableName, group2Removed.get(tableName));
+	    				}
+	    				int group1Size = 0;
+	    				int group2Size = 0;
+	    				for (String tableName: group1Removed.keySet()) {
+	    					group1Size += group1Removed.get(tableName).size();
+	    				}
+	    				for (String tableName: group2Removed.keySet()) {
+	    					group2Size += group2Removed.get(tableName).size();
+	    				}
+	    				kMin = group1Size + group2Size;
+	    				//System.out.println(ret);
+	    				
 	    			}
-//	    			System.out.println(constraints);
-//	    			System.out.print("group1Removed: ");
-//	    			System.out.println(group1Removed);
-//	    			System.out.print("group2Removed: ");
-//	    			System.out.println(group2Removed);
+//	    			//System.out.println(constraints);
+//	    			//System.out.print("group1Removed: ");
+//	    			//System.out.println(group1Removed);
+//	    			//System.out.print("group2Removed: ");
+//	    			//System.out.println(group2Removed);
 
 				}
 			}			    			
 		}
 		
-	    if (minK != Integer.MAX_VALUE) {
-	    	return minK;
+	    if (ret.size() != 0) {
+	    	return ret;
 	    }
-	    return -1;
+	    return null;
 	}
 	
-	private Integer commonAttrs(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
+	private HashMap<String, ArrayList<HashMap<String, Object>>> commonAttrs(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashSet<String> intersection, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
 		Object[] tables = tables_attrs.keySet().toArray();
-		ArrayList<ArrayList<Integer>> dp = new ArrayList<ArrayList<Integer>>();
+		ArrayList<ArrayList<HashMap<String, ArrayList<HashMap<String, Object>>>>> dp = new ArrayList<ArrayList<HashMap<String, ArrayList<HashMap<String, Object>>>>>();
 		Object[] commonAttrs = intersection.toArray();
 		String queryFrom = "";
 		for (Object tableName: tables) {
@@ -769,7 +943,7 @@ public class PostgreSqlExample {
 		    query += queryWhere;
 		}
 		query += " group by " + queryGroupby;
-		System.out.println(query);
+		//System.out.println(query);
 		ResultSet tableData = statement.executeQuery(query);
 		ArrayList<ArrayList<Object>> commonAttrsVals = new ArrayList<ArrayList<Object>>();
 		int commonCount = 0;
@@ -784,8 +958,8 @@ public class PostgreSqlExample {
 		
         
 		for (ArrayList<Object> commonAttrsVal: commonAttrsVals) {
-			System.out.print("commonAttrsVal: ");
-			System.out.println(commonAttrsVal);
+			//System.out.print("commonAttrsVal: ");
+			//System.out.println(commonAttrsVal);
 			
 			HashMap<String, Object> newConstraints = new HashMap<String, Object>();
 			if (constraints.size() != 0) {
@@ -834,64 +1008,70 @@ public class PostgreSqlExample {
 			
             
 
-            System.out.println(tables_attrs);
-            System.out.println(attrs);
-            System.out.println(projection);
-            System.out.println(constraints);
-            System.out.println(new_tables_attrs);
-            System.out.println(new_attrs);
-            System.out.println(new_projection);
-            System.out.println(newConstraints);
+//            System.out.println(tables_attrs);
+//            System.out.println(attrs);
+//            System.out.println(projection);
+//            System.out.println(constraints);
+//            System.out.println(new_tables_attrs);
+//            System.out.println(new_attrs);
+//            System.out.println(new_projection);
+//            System.out.println(newConstraints);
 			
-		    ArrayList<Integer> row  = new ArrayList<Integer>();
+            ArrayList<HashMap<String, ArrayList<HashMap<String, Object>>>> row  = new ArrayList<HashMap<String, ArrayList<HashMap<String, Object>>>>();
 		    for (int i = 0; i <= k; i++) {
 		    	if (dp.size() == 0) {
-		    		Integer j = setUp(i, statement, new_tables_attrs, new_attrs, newConstraints, new_projection, fullJoin);
+		    		HashMap<String, ArrayList<HashMap<String, Object>>> j = setUp(i, statement, new_tables_attrs, new_attrs, newConstraints, new_projection, fullJoin);
 		    		if (j == null) {
-		    			return null;
-		    		}
-		    		if (j >= 0) {
-		    			row.add(j);
+		    			row.add(null);
 		    		}
 		    		else {
-		    			row.add(-1);
+		    			row.add(j);
 		    		}
 		    	}
 		    	else {
-		    		 ArrayList<Integer> candidates = new ArrayList<Integer>();
+		    		 int minSize = Integer.MAX_VALUE;
+		    		 HashMap<String, ArrayList<HashMap<String, Object>>> toAdd = null;
 		    		 // the new possible common attributes values to remove j final tuples
 		    		 for (int j = 0; j <= i; j ++) {
 		    			 //System.out.println(i-j);
-		    			 if (dp.get(commonCount-1).get(j) >= 0) {
-		    				 System.out.println(new_tables_attrs);
-		    				 System.out.println(new_attrs);
-		    				 System.out.println(newConstraints);
-		    				 System.out.println(new_projection);
-		    				 int c = setUp(i-j, statement, new_tables_attrs, new_attrs, newConstraints, new_projection, fullJoin);
-		    				 if (c >= 0) {
-		    					 candidates.add(dp.get(commonCount-1).get(j) + c);
+		    			 if (dp.get(commonCount-1).get(j) != null) {
+		    				 //System.out.println(new_tables_attrs);
+		    				 //System.out.println(new_attrs);
+		    				 //System.out.println(newConstraints);
+		    				 //System.out.println(new_projection);
+		    				 HashMap<String, ArrayList<HashMap<String, Object>>> c = setUp(i-j, statement, new_tables_attrs, new_attrs, newConstraints, new_projection, fullJoin);
+		    				 if (c != null && c.size() >= 0) {
+		    					 for (String tableName: dp.get(commonCount-1).get(j).keySet()) {
+		    						 if (!c.containsKey(tableName)) {
+		    							 c.put(tableName, dp.get(commonCount-1).get(j).get(tableName));
+		    						 }
+		    						 else {
+		    							 ArrayList<HashMap<String, Object>> existed = dp.get(commonCount-1).get(j).get(tableName);
+		    							 c.get(tableName).addAll(existed);
+		    						 }
+		    					 }
+		    					 int cSize = 0;
+		    					 for (String tableName: c.keySet()) {
+		    						 cSize += c.get(tableName).size();
+		    					 }
+		    					 if (cSize < minSize) {
+		    						 minSize = cSize;
+		    						 toAdd = c;
+		    					 }
 		    				 }
 		    			 }
 		    		 }
-		    		 System.out.print("bpcandidates: ");
-		    		 System.out.println(candidates);
-		    		 int minVal = Integer.MAX_VALUE;
-		    		 for (int j = 0; j < candidates.size(); j ++) {
-		    			 if (candidates.get(j) < minVal) {
-		    				 minVal = candidates.get(j);
-		    			 }
-		    		 }
-		    		 if (minVal == Integer.MAX_VALUE) {
-		    			 row.add(-1);
+		    		 if (minSize == Integer.MAX_VALUE) {
+		    			 row.add(null);
 		    		 }
 		    		 else {
-		    			 row.add(minVal);
+		    			 row.add(toAdd);
 		    		 }	 
 		    	}
 		    }
 		    dp.add(row);
 		    commonCount += 1;
-		    System.out.println(dp);
+		    //System.out.println(dp);
 		}
 		
 		
@@ -1023,7 +1203,7 @@ public class PostgreSqlExample {
 					//System.out.println(visited);
 					//System.out.println(endogenous.get(k));
 					if (visited.contains(endogenous.get(k))) { 			// find triad
-						System.out.println("triad");
+						//System.out.println("triad");
 						return null;
 					}
 				}
@@ -1032,9 +1212,9 @@ public class PostgreSqlExample {
 		return endogenous;	
 	}
 	
-	private int booleanQuery (int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints) throws SQLException{
+	private HashMap<String, ArrayList<HashMap<String, Object>>> booleanQuery (int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints) throws SQLException{
 		if (k > 1) {
-			return -1;
+			return null;
 		}
 		ArrayList<HashSet<String>> groups = dividable(statement, tables_attrs, attrs, constraints);
 		if (groups.get(1).size() != 0) {    // dividable
@@ -1058,12 +1238,31 @@ public class PostgreSqlExample {
 			for (ArrayList<String> attr: tables_attrs_2.values()) {
 				attrs_2.addAll(attr);
 			}
-			return Math.min(booleanQuery(k, statement, tables_attrs_1, attrs_1, constraints), booleanQuery(k, statement, tables_attrs_2, attrs_2, constraints));
+			HashMap<String, ArrayList<HashMap<String, Object>>> group1ToRemove = booleanQuery(k, statement, tables_attrs_1, attrs_1, constraints);
+			HashMap<String, ArrayList<HashMap<String, Object>>> group2ToRemove = booleanQuery(k, statement, tables_attrs_2, attrs_2, constraints);
+			int group1Size = 0;
+			int group2Size = 0;
+			for (ArrayList<HashMap<String, Object>> table_attrs: group1ToRemove.values()) {
+				group1Size += table_attrs.size();
+			}
+			for (ArrayList<HashMap<String, Object>> table_attrs: group2ToRemove.values()) {
+				group2Size += table_attrs.size();
+			}
+			if (group1Size > group2Size) {
+				return group2ToRemove;
+			}
+			else {
+				return group1ToRemove;
+			}
 		}
 		else {		// not dividable, base case
-			
 			if (tables_attrs.size() == 1) {				// only one table - remove all
-				String query = "select count(*) from ";
+				String query = "select ";
+				for (String attrName: attrs) {
+					query += "\"" + attrName + "\", ";
+				}
+				query = query.substring(0, query.length()-2);
+				query += " from ";		
 				String tableName = "\"" + (String) tables_attrs.keySet().toArray()[0] + "\"";
 				query += tableName;
 				if (constraints.size() != 0) {
@@ -1074,13 +1273,26 @@ public class PostgreSqlExample {
 				    where = where.substring(0, where.length()-5);
 					query += where;
 				}
-				System.out.println(query);
+				//System.out.println(query);
 				ResultSet rs = statement.executeQuery(query);
-				rs.next();
-				
-				return rs.getInt(1);
+				ArrayList<HashMap<String, Object>> ret = new ArrayList<HashMap<String, Object>>();
+				while (rs.next()) {
+					HashMap<String, Object> row = new HashMap<String, Object>();
+					for (String attrName: attrs) {
+						row.put(attrName, rs.getObject(attrName));
+					}
+					if (constraints.size() != 0) {
+						for (String attrName: constraints.keySet()) {
+							row.put(attrName, constraints.get(attrName));
+						}
+					}
+					ret.add(row);
+				}
+				HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+				r.put((String)tables_attrs.keySet().toArray()[0], ret);
+				return r;
 			}
-
+			// more than one table
 		    ArrayList<String> tableNames = new ArrayList<String>(tables_attrs.keySet());
 		    ArrayList<String> order = new ArrayList<String>();
 		    HashMap<String, HashSet<Integer>> attrPos = new HashMap<String, HashSet<Integer>>();
@@ -1137,7 +1349,7 @@ public class PostgreSqlExample {
 				}
 				tableNames.remove(tableName);
 			}
-			
+			//System.out.println(order);
 			ArrayList<ArrayList<String>> intersections = new ArrayList<ArrayList<String>>();
 			for (int i = 0; i < order.size() - 1; i++) {
 				ArrayList<String> attrs_1_copy = new ArrayList<String>();
@@ -1147,10 +1359,10 @@ public class PostgreSqlExample {
 				intersections.add(attrs_1_copy);
 			}
 			
-			ArrayList<ArrayList<ArrayList<Object>>> vertices = new ArrayList<ArrayList<ArrayList<Object>>>();
+			ArrayList<ArrayList<HashMap<String, Object>>> vertices = new ArrayList<ArrayList<HashMap<String, Object>>>();
 			int numOfVertices = 2;
 			for (int i = 0; i < intersections.size(); i++) {
-				ArrayList<ArrayList<Object>> v = new ArrayList<ArrayList<Object>>();
+				ArrayList<HashMap<String, Object>> v = new ArrayList<HashMap<String, Object>>();
 				String query = "select distinct ";
 				for (String attrName: intersections.get(i)) {
 					query += "\"" + attrName + "\", ";
@@ -1168,15 +1380,15 @@ public class PostgreSqlExample {
 				ResultSet rs = statement.executeQuery(query);
 				while (rs.next()) {
 					numOfVertices += 1;
-					ArrayList<Object> vv = new ArrayList<Object>();
-					for (int j = 1; j <= intersections.get(i).size(); j ++) {
-						vv.add(rs.getObject(j));
+					HashMap<String, Object> vv = new HashMap<String, Object>();
+					for (String attrName: intersections.get(i)) {
+						vv.put(attrName, rs.getObject(attrName));
 					}
 					v.add(vv);
 				}
 				vertices.add(v);
 			}
-			
+			//System.out.println(vertices);
 			ArrayList<ArrayList<Integer>> graph = new ArrayList<ArrayList<Integer>>();
 			int counter1 = 1;
 			int counter2 = 1;
@@ -1201,9 +1413,9 @@ public class PostgreSqlExample {
 				source.add(0);
 			}
 			while (rs.next()) {
-				ArrayList<Object> data = new ArrayList<Object>();
-				for (int i = 1; i <= intersections.get(0).size(); i++) {
-					data.add(rs.getObject(i));
+				HashMap<String, Object> data = new HashMap<String, Object>();
+				for (String attrName: intersections.get(0)) {
+					data.put(attrName, rs.getObject(attrName));
 				}
 				int pos = vertices.get(0).indexOf(data) + counter1;
 				int c = source.get(pos);
@@ -1233,23 +1445,23 @@ public class PostgreSqlExample {
 				//System.out.println(query);
 				rs = statement.executeQuery(query);
 				while (rs.next()) {
-					ArrayList<Object> l = new ArrayList<Object>();
-					ArrayList<Object> r = new ArrayList<Object>();
+					HashMap<String, Object> l = new HashMap<String, Object>();
+					HashMap<String, Object> r = new HashMap<String, Object>();
 					for (int j = 1; j <= intersections.get(i-1).size(); j++) {
-						l.add(rs.getObject(j));
+						l.put(intersections.get(i-1).get(j-1), rs.getObject(j));
 					}
 					for (int j = intersections.get(i-1).size() + 1; j <= intersections.get(i-1).size() + intersections.get(i).size(); j++) {
-						r.add(rs.getObject(j));
+						r.put(intersections.get(i).get(j - intersections.get(i-1).size() - 1), rs.getObject(j));
 					}
 					int lPos = vertices.get(i-1).indexOf(l) + counter1;
 					int rPos = vertices.get(i).indexOf(r) + counter2;
 					if (lPos < counter1 || rPos < counter2) {
 						continue;
 					}
-//					System.out.println(l);
-//					System.out.println(r);
-//					System.out.println(lPos);
-//					System.out.println(rPos);
+//					//System.out.println(l);
+//					//System.out.println(r);
+//					//System.out.println(lPos);
+//					//System.out.println(rPos);
 					ArrayList<Integer> vertex = graph.get(lPos);
 					int c = vertex.get(rPos);
 					c += 1;
@@ -1269,12 +1481,11 @@ public class PostgreSqlExample {
 			query = query.substring(0, query.length()-2);
 			query += " from " + "\"" + order.get(order.size()-1) + "\"";
 			rs = statement.executeQuery(query);
-			//System.out.println(query);
 		
 			while (rs.next()) {
-				ArrayList<Object> data = new ArrayList<Object>();
-				for (int i = 1; i <= intersections.get(intersections.size()-1).size(); i++) {
-					data.add(rs.getObject(i));
+				HashMap<String, Object> data = new HashMap<String, Object>();
+				for (String attrName: intersections.get(intersections.size()-1)) {
+					data.put(attrName, rs.getObject(attrName));
 				}
 				int pos = vertices.get(vertices.size()-1).indexOf(data) + counter1;
 				if (pos < counter1) {
@@ -1295,94 +1506,244 @@ public class PostgreSqlExample {
 				ArrayList<Integer> row = graph.get(i);
 				graph_arr[i] = row.toArray(new Integer[numOfVertices]);
 			}
-			return ff(numOfVertices, graph_arr);
+			//System.out.println(Arrays.deepToString(graph_arr));
+			ArrayList<ArrayList<Integer>> edges =  minCut(graph_arr, 0, graph_arr.length-1);
+			HashMap<String, ArrayList<HashMap<String, Object>>> r = new HashMap<String, ArrayList<HashMap<String, Object>>>();
+			//System.out.println(edges);
+			for (ArrayList<Integer> edge: edges) {
+				ArrayList<HashMap<String, Object>> ret = new ArrayList<HashMap<String, Object>>();
+				int vertex1, vertex2;
+				if (edge.get(0) > edge.get(1)) {
+					vertex1 = edge.get(1);
+					vertex2 = edge.get(0);
+				}
+				else {
+					vertex2 = edge.get(1);
+					vertex1 = edge.get(0);
+				}
+				
+				
+				int counter = 1;
+				int intersection = 0;
+				//System.out.println(vertex1);
+				//System.out.println(vertex2);
+				
+				if (vertex1 == 0) {			// go to order[0] to find the tuples
+					query = "select count(*) from \"" + order.get(0) + "\" where ";
+					while (counter + vertices.get(intersection).size() < vertex2) {
+						counter += vertices.get(intersection).size();
+						intersection += 1;
+					}
+					String where = "";
+					//System.out.println(vertices.get(intersection));
+					HashMap<String, Object> intersection2 = vertices.get(intersection).get(vertex2 - counter);
+					for (String attrName: intersection2.keySet()) {
+						where += "\"" + attrName + "\" = " + intersection2.get(attrName).toString() + " AND ";
+					}
+					where = where.substring(0, where.length()-5);
+					query += where;
+					//System.out.println(query);
+					rs = statement.executeQuery(query);
+					rs.next();
+					HashMap<String, Object> toRemove = new HashMap<String, Object>();
+					for (String attrName: tables_attrs.get(order.get(0))) {
+						if (intersection2.keySet().contains(attrName)) {
+							toRemove.put(attrName, intersection2.get(attrName));
+						}
+						else {
+							toRemove.put(attrName, attrName);
+						}
+					}
+					toRemove.put("number", rs.getInt(1));
+					ret.add(toRemove);
+					//System.out.println(toRemove);
+					//System.out.println(ret);
+					if (!r.containsKey(order.get(0))) {
+						r.put(order.get(0), ret);
+					}
+					else {
+						ArrayList<HashMap<String, Object>> exist = r.get(order.get(0));
+						exist.addAll(ret);
+					}
+				}
+				
+				else if (vertex2 == numOfVertices-1) {		// go to order[-1] to find the tuples
+					query = "select count(*) from \"" + order.get(order.size()-1) + "\" where ";
+					while (counter + vertices.get(intersection).size() < vertex1) {
+						counter += vertices.get(intersection).size();
+						intersection += 1;
+					}
+					String where = "";
+					//System.out.println(vertices.get(intersection));
+					HashMap<String, Object> intersection1 = vertices.get(intersection).get(vertex1 - counter);
+					for (String attrName: intersection1.keySet()) {
+						where += "\"" + attrName + "\" = " + intersection1.get(attrName).toString() + " AND ";
+					}
+					where = where.substring(0, where.length()-5);
+					query += where;
+					rs = statement.executeQuery(query);
+					rs.next();
+					HashMap<String, Object> toRemove = new HashMap<String, Object>();
+					for (String attrName: tables_attrs.get(order.get(0))) {
+						if (intersection1.keySet().contains(attrName)) {
+							toRemove.put(attrName, intersection1.get(attrName));
+						}
+						else {
+							toRemove.put(attrName, attrName);
+						}
+					}
+					toRemove.put("number", rs.getInt(1));
+					ret.add(toRemove);
+					if (!r.containsKey(order.get(order.size()-1))) {
+						r.put(order.get(order.size()-1), ret);
+					}
+					else {
+						ArrayList<HashMap<String, Object>> exist = r.get(order.get(intersection));
+						exist.addAll(ret);
+					}
+				}
+				else {
+					HashMap<String, Object> toRemove = new HashMap<String, Object>();
+					while (counter + vertices.get(intersection).size() < vertex1) {
+						counter += vertices.get(intersection).size();
+						intersection += 1;
+					}
+					//System.out.println(intersection);
+					HashMap<String, Object> intersection1 = vertices.get(intersection).get(vertex1 - counter);
+					//System.out.println(intersection1);
+					counter += vertices.get(intersection).size();
+					intersection += 1;
+					HashMap<String, Object> intersection2 = vertices.get(intersection).get(vertex2 - counter);
+					for (String attrName: intersection1.keySet()) {
+						toRemove.put(attrName, intersection1.get(attrName));
+					}
+					for (String attrName: intersection2.keySet()) {
+						toRemove.put(attrName, intersection2.get(attrName));
+					}
+					ret.add(toRemove);
+					if (!r.containsKey(order.get(intersection))) {
+						r.put(order.get(intersection), ret);
+					}
+					else {
+						ArrayList<HashMap<String, Object>> exist = r.get(order.get(intersection));
+						exist.addAll(ret);
+					}
+					
+				}
+				
+				
+			}
+			return r;
 		}
-		
-		
-		
 	}
 	
-	private int ff(int vertices, Integer[][] graph) {
-		int source = 0;
-		int sink = vertices-1;
-		int[][] residualGraph = new int[vertices][vertices];
+	private static ArrayList<ArrayList<Integer>> minCut(Integer[][] graph, int s, int t) { 
+		int u,v; 
+		
+		// Create a residual graph and fill the residual 
+		// graph with given capacities in the original 
+		// graph as residual capacities in residual graph 
+		// rGraph[i][j] indicates residual capacity of edge i-j 
+		int[][] rGraph = new int[graph.length][graph.length]; 
+		for (int i = 0; i < graph.length; i++) { 
+			for (int j = 0; j < graph.length; j++) { 
+				rGraph[i][j] = graph[i][j]; 
+			} 
+		} 
 
-        //initialize residual graph same as original graph
-        for (int i = 0; i <vertices ; i++) {
-            for (int j = 0; j <vertices ; j++) {
-                residualGraph[i][j] = graph[i][j];
-            }
-        }
-
-        //initialize parent [] to store the path Source to destination
-        int [] parent = new int[vertices];
-
-        int max_flow = 0; //initialize the max flow
-
-        while(isPathExist_BFS(residualGraph, source, sink, parent, vertices)){
-            //if here means still path exist from source to destination
-
-            //parent [] will have the path from source to destination
-            //find the capacity which can be passed though the path (in parent[])
-
-            int flow_capacity = Integer.MAX_VALUE;
-
-            int t = sink;
-            while(t!=source){
-                int s = parent[t];
-                flow_capacity = Math.min(flow_capacity, residualGraph[s][t]);
-                t = s;
-            }
-
-            //update the residual graph
-            //reduce the capacity on fwd edge by flow_capacity
-            //add the capacity on back edge by flow_capacity
-            t = sink;
-            while(t!=source){
-                int s = parent[t];
-                residualGraph[s][t]-=flow_capacity;
-                residualGraph[t][s]+=flow_capacity;
-                t = s;
-            }
-
-            //add flow_capacity to max value
-            max_flow+=flow_capacity;
-        }
-        return max_flow;
-	}
+		// This array is filled by BFS and to store path 
+		int[] parent = new int[graph.length]; 
+		
+		// Augment the flow while tere is path from source to sink	 
+		while (bfs(rGraph, s, t, parent)) { 
+			
+			// Find minimum residual capacity of the edhes 
+			// along the path filled by BFS. Or we can say 
+			// find the maximum flow through the path found. 
+			int pathFlow = Integer.MAX_VALUE;		 
+			for (v = t; v != s; v = parent[v]) { 
+				u = parent[v]; 
+				pathFlow = Math.min(pathFlow, rGraph[u][v]); 
+			} 
+			
+			// update residual capacities of the edges and 
+			// reverse edges along the path 
+			for (v = t; v != s; v = parent[v]) { 
+				u = parent[v]; 
+				rGraph[u][v] = rGraph[u][v] - pathFlow; 
+				rGraph[v][u] = rGraph[v][u] + pathFlow; 
+			} 
+		} 
+		
+		// Flow is maximum now, find vertices reachable from s	 
+		boolean[] isVisited = new boolean[graph.length];	 
+		dfs(rGraph, s, isVisited); 
+		
+		// Print all edges that are from a reachable vertex to 
+		// non-reachable vertex in the original graph	 
+		ArrayList<ArrayList<Integer>> ret = new ArrayList<ArrayList<Integer>>();
+		for (int i = 0; i < graph.length; i++) { 
+			for (int j = 0; j < graph.length; j++) { 
+				if (graph[i][j] > 0 && isVisited[i] && !isVisited[j]) { 
+					ArrayList<Integer> edge = new ArrayList<Integer>();
+					edge.add(i);
+					edge.add(j);
+					ret.add(edge);
+				} 
+			} 
+		} 
+		return ret;
+	} 
 	
-	private boolean isPathExist_BFS(int [][] residualGraph, int src, int dest, int [] parent, int vertices){
-        boolean pathFound = false;
+	// Returns true if there is a path 
+		// from source 's' to sink 't' in residual 
+		// graph. Also fills parent[] to store the path 
+		private static boolean bfs(int[][] rGraph, int s, 
+									int t, int[] parent) { 
+			
+			// Create a visited array and mark 
+			// all vertices as not visited	 
+			boolean[] visited = new boolean[rGraph.length]; 
+			
+			// Create a queue, enqueue source vertex 
+			// and mark source vertex as visited	 
+			Queue<Integer> q = new LinkedList<Integer>(); 
+			q.add(s); 
+			visited[s] = true; 
+			parent[s] = -1; 
+			
+			// Standard BFS Loop	 
+			while (!q.isEmpty()) { 
+				int v = q.poll(); 
+				for (int i = 0; i < rGraph.length; i++) { 
+					if (rGraph[v][i] > 0 && !visited[i]) { 
+						q.offer(i); 
+						visited[i] = true; 
+						parent[i] = v; 
+					} 
+				} 
+			} 
+			
+			// If we reached sink in BFS starting 
+			// from source, then return true, else false	 
+			return (visited[t] == true); 
+		} 
+		
+		// A DFS based function to find all reachable 
+		// vertices from s. The function marks visited[i] 
+		// as true if i is reachable from s. The initial 
+		// values in visited[] must be false. We can also 
+		// use BFS to find reachable vertices 
+		private static void dfs(int[][] rGraph, int s, 
+									boolean[] visited) { 
+			visited[s] = true; 
+			for (int i = 0; i < rGraph.length; i++) { 
+					if (rGraph[s][i] > 0 && !visited[i]) { 
+						dfs(rGraph, i, visited); 
+					} 
+			} 
+		} 
 
-        //create visited array [] to
-        //keep track of visited vertices
-        boolean [] visited = new boolean[vertices];
-
-        //Create a queue for BFS
-        Queue<Integer> queue = new LinkedList<>();
-
-        //insert the source vertex, mark it visited
-        queue.add(src);
-        parent[src] = -1;
-        visited[src] = true;
-
-        while(queue.isEmpty()==false){
-            int u = queue.poll();
-
-            //visit all the adjacent vertices
-            for (int v = 0; v <vertices ; v++) {
-                //if vertex is not already visited and u-v edge weight >0
-                if(visited[v]==false && residualGraph[u][v]>0) {
-                    queue.add(v);
-                    parent[v] = u;
-                    visited[v] = true;
-                }
-            }
-        }
-        //check if dest is reached during BFS
-        pathFound = visited[dest];
-        return pathFound;
-    }
 
 	
 	
@@ -1390,13 +1751,20 @@ public class PostgreSqlExample {
 	
 	public static void main(String[] args) {
 
-		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/basecase2", "postgres", "postgres")) {
+		try (Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/test3", "postgres", "postgres")) {
 			
-			// initialize k
+			// initialize k and projections
 			int k = 4;
 			ArrayList<String> projection = new ArrayList<String>();
 			projection.add("A");
 			projection.add("B");
+			projection.add("C");
+			projection.add("D");
+			projection.add("E");
+			projection.add("F");
+
+
+
 
 
 		    HashMap<String, ArrayList<String>> tables_attrs = new HashMap<>();     // the attributes in each table
@@ -1432,6 +1800,7 @@ public class PostgreSqlExample {
 			else {
 				fullJoin = true;
 			}
+			//System.out.println(fullJoin);
 			PostgreSqlExample test = new PostgreSqlExample(k, statement, tables_attrs, attrs, projection, fullJoin);
 
 		    //System.out.println(System.currentTimeMillis() - start);
