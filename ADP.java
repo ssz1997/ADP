@@ -21,17 +21,7 @@ public class ADP {
 	ADP(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, ArrayList<String> projection, boolean fullJoin) throws SQLException{
 		HashMap<String, ArrayList<HashMap<String, Object>>> result = setUp(k, statement, tables_attrs, attrs, new HashMap<String, Object>(), projection, fullJoin);	
 		System.out.println(result);
-		int num = 0;
-		for (String tableName: result.keySet()) {
-			ArrayList<HashMap<String, Object>> toRemove = result.get(tableName);
-			num += toRemove.size();
-			for (HashMap<String, Object> tuple: toRemove) {
-				if (tuple.containsKey("number")) {
-					num += (int) tuple.get("number") - 1;
-				}
-			}
-		}
-		System.out.println(num);
+		System.out.println(this.num(result));
 	}
 	
 	private HashMap<String, ArrayList<HashMap<String, Object>>> setUp(int k, Statement statement, HashMap<String, ArrayList<String>> tables_attrs, HashSet<String> attrs, HashMap<String, Object> constraints, ArrayList<String> projection, boolean fullJoin) throws SQLException {
