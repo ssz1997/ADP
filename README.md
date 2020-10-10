@@ -1,6 +1,6 @@
 # ADP
 
-ADP.java calculates the exact tuples to remove. ADPNum.java calculates the number of tuples to remove. Baseline is the brute-force algorithm.
+ADP.java calculates the exact tuples to remove. ADPNum.java calculates the number of tuples to remove. Baseline is the brute-force algorithm. DecomposeTwoPar.java and Decomposeks.java implements unoptimized decompose algorithm. RemoveAsWhole.java and RemoveOne.java implements unoptimized singleton algorithm. 
 
 All data are in folder data. Data should be imported into PostgreSQL.
 
