@@ -8,6 +8,7 @@ External jars are in folder bin.
 
 Compile by command:
     javac -cp bin/gson-2.8.6.jar:bin/postgresql-42.2.10.jar:bin/commons-math3-3.6.1.jar <filename.java>
+    
 Run by command:
     java -cp bin/gson-2.8.6.jar:bin/postgresql-42.2.10.jar:bin/commons-math3-3.6.1.jar:. <classname>
   
